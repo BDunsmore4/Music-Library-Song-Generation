@@ -6,5 +6,4 @@ torch
 joblib
 transformers
 pydub
-pyaudioop
 umap-learn
