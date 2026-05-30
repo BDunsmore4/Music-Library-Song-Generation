@@ -3,14 +3,15 @@ import os
 import numpy as np
 import requests
 import torch
-import joblib
 from flask import Flask, request, jsonify, make_response, send_file
 from pydub import AudioSegment
+from sklearn.neighbors import NearestNeighbors
 from transformers import ClapModel, AutoFeatureExtractor
 
 PORT          = int(os.environ.get("PORT", 8765))
-UMAP_REDUCER  = os.environ.get("UMAP_REDUCER_PATH", "umap_reducer.pkl")
 HTML_FILE     = os.environ.get("HTML_FILE", "taste_map_with_words.html")
+RAW_DATA_PATH = os.environ.get("UMAP_RAW_DATA",  "umap_raw_data.npy")
+EMBEDDING_PATH = os.environ.get("UMAP_EMBEDDING", "umap_embedding.npy")
 
 print("Loading CLAP model...")
 model             = ClapModel.from_pretrained("laion/clap-htsat-unfused")
@@ -18,9 +19,18 @@ feature_extractor = AutoFeatureExtractor.from_pretrained("laion/clap-htsat-unfus
 model.eval()
 print("  CLAP ready")
 
-print("Loading UMAP reducer...")
-reducer = joblib.load(UMAP_REDUCER)
-print("  UMAP reducer ready")
+print("Loading UMAP projection data...")
+_raw_data  = np.load(RAW_DATA_PATH)
+_embedding = np.load(EMBEDDING_PATH)
+_knn = NearestNeighbors(n_neighbors=5, metric="cosine", algorithm="brute")
+_knn.fit(_raw_data)
+print("  Projection ready")
+
+def project(emb):
+    distances, indices = _knn.kneighbors([emb])
+    weights = 1.0 / (distances[0] + 1e-8)
+    weights /= weights.sum()
+    return (_embedding[indices[0]] * weights[:, np.newaxis]).sum(axis=0)
 
 app = Flask(__name__)
 
@@ -40,7 +50,7 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
-@app.route('/')
+@app.route("/")
 def serve_html():
     return send_file(HTML_FILE)
 
@@ -56,7 +66,7 @@ def embed():
     try:
         print(f"Embedding: {label}")
         emb    = embed_audio_url(url)
-        coords = reducer.transform([emb])[0]
+        coords = project(emb)
         print(f"  -> ({coords[0]:.3f}, {coords[1]:.3f})")
         return jsonify({"x": float(coords[0]), "y": float(coords[1]), "label": label})
     except Exception as e:
@@ -68,10 +78,10 @@ def embed_blob():
     print("  Received request")
     label = request.form.get("label", "Generated")
 
-    if 'audio' not in request.files:
+    if "audio" not in request.files:
         return jsonify({"error": "No audio file"}), 400
 
-    audio_bytes = request.files['audio'].read()
+    audio_bytes = request.files["audio"].read()
     print(f"  Audio size: {len(audio_bytes)} bytes")
 
     try:
@@ -93,7 +103,7 @@ def embed_blob():
         with torch.no_grad():
             emb = model.get_audio_features(**inputs)
 
-        coords = reducer.transform([emb.squeeze().numpy()])[0]
+        coords = project(emb.squeeze().numpy())
         print(f"  Embedded -> ({coords[0]:.3f}, {coords[1]:.3f})")
         return jsonify({"x": float(coords[0]), "y": float(coords[1]), "label": label})
 

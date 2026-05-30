@@ -6,4 +6,4 @@ torch
 joblib
 transformers
 pydub
-umap-learn
+scikit-learn
