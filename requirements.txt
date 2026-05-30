@@ -2,7 +2,7 @@ flask
 flask-cors
 numpy
 requests
-torch --index-url https://download.pytorch.org/whl/cpu
+torch
 joblib
 transformers
 pydub
