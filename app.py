@@ -3,15 +3,14 @@ import os
 import numpy as np
 import requests
 import torch
+import joblib
 from flask import Flask, request, jsonify, make_response, send_file
 from pydub import AudioSegment
-from sklearn.neighbors import NearestNeighbors
 from transformers import ClapModel, AutoFeatureExtractor
 
-PORT          = int(os.environ.get("PORT", 8765))
-HTML_FILE     = os.environ.get("HTML_FILE", "taste_map_with_words.html")
-RAW_DATA_PATH = os.environ.get("UMAP_RAW_DATA",  "umap_raw_data.npy")
-EMBEDDING_PATH = os.environ.get("UMAP_EMBEDDING", "umap_embedding.npy")
+PORT         = int(os.environ.get("PORT", 8765))
+UMAP_REDUCER = os.environ.get("UMAP_REDUCER_PATH", "umap_reducer.pkl")
+HTML_FILE    = os.environ.get("HTML_FILE", "taste_map_with_words.html")
 
 print("Loading CLAP model...")
 model             = ClapModel.from_pretrained("laion/clap-htsat-unfused")
@@ -19,18 +18,9 @@ feature_extractor = AutoFeatureExtractor.from_pretrained("laion/clap-htsat-unfus
 model.eval()
 print("  CLAP ready")
 
-print("Loading UMAP projection data...")
-_raw_data  = np.load(RAW_DATA_PATH)
-_embedding = np.load(EMBEDDING_PATH)
-_knn = NearestNeighbors(n_neighbors=5, metric="cosine", algorithm="brute")
-_knn.fit(_raw_data)
-print("  Projection ready")
-
-def project(emb):
-    distances, indices = _knn.kneighbors([emb])
-    weights = 1.0 / (distances[0] + 1e-8)
-    weights /= weights.sum()
-    return (_embedding[indices[0]] * weights[:, np.newaxis]).sum(axis=0)
+print("Loading UMAP reducer...")
+reducer = joblib.load(UMAP_REDUCER)
+print("  UMAP reducer ready")
 
 app = Flask(__name__)
 
@@ -66,7 +56,7 @@ def embed():
     try:
         print(f"Embedding: {label}")
         emb    = embed_audio_url(url)
-        coords = project(emb)
+        coords = reducer.transform([emb])[0]
         print(f"  -> ({coords[0]:.3f}, {coords[1]:.3f})")
         return jsonify({"x": float(coords[0]), "y": float(coords[1]), "label": label})
     except Exception as e:
@@ -103,7 +93,7 @@ def embed_blob():
         with torch.no_grad():
             emb = model.get_audio_features(**inputs)
 
-        coords = project(emb.squeeze().numpy())
+        coords = reducer.transform([emb.squeeze().numpy()])[0]
         print(f"  Embedded -> ({coords[0]:.3f}, {coords[1]:.3f})")
         return jsonify({"x": float(coords[0]), "y": float(coords[1]), "label": label})
 
