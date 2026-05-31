@@ -1,0 +1,5 @@
+# Ensure ffmpeg (used by pydub to decode mp3/m4a/ogg) is always present in the
+# Railway build image. "..." extends nixpacks' auto-detected packages rather
+# than replacing them.
+[phases.setup]
+nixPkgs = ["...", "ffmpeg"]

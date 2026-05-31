@@ -8,9 +8,13 @@ from flask import Flask, request, jsonify, make_response, send_file
 from pydub import AudioSegment
 from transformers import ClapModel, AutoFeatureExtractor
 
-PORT         = int(os.environ.get("PORT", 8765))
-UMAP_REDUCER = os.environ.get("UMAP_REDUCER_PATH", "umap_reducer.pkl")
-HTML_FILE    = os.environ.get("HTML_FILE", "taste_map_with_words.html")
+import r2_client
+
+PORT               = int(os.environ.get("PORT", 8765))
+UMAP_REDUCER       = os.environ.get("UMAP_REDUCER_PATH", "umap_reducer.pkl")
+HTML_FILE          = os.environ.get("HTML_FILE", "taste_map_with_words.html")
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_URL     = "https://api.elevenlabs.io/v1/music/compose"
 
 print("Loading CLAP model...")
 model             = ClapModel.from_pretrained("laion/clap-htsat-unfused")
@@ -40,6 +44,44 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
+
+# ── Shared embedding helpers ────────────────────────────────────────────────
+def decode_audio_to_samples(audio_bytes):
+    """Decode audio bytes (mp3/m4a/wav/ogg) into 48kHz mono float32 samples."""
+    audio = None
+    for fmt in ["mp3", "m4a", "wav", "ogg"]:
+        try:
+            audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format=fmt)
+            break
+        except Exception:
+            continue
+    if audio is None:
+        raise ValueError("Could not decode audio — unsupported format")
+
+    audio   = audio.set_frame_rate(48000).set_channels(1)
+    samples = np.array(audio.get_array_of_samples()).astype(np.float32)
+    samples = samples / (2 ** (audio.sample_width * 8 - 1))
+    if len(samples) == 0:
+        raise ValueError("Empty audio")
+    return samples
+
+
+def embed_samples(samples):
+    """Run CLAP on normalised samples and return the embedding vector."""
+    inputs = feature_extractor(samples, return_tensors="pt", sampling_rate=48000)
+    with torch.no_grad():
+        emb = model.get_audio_features(**inputs)
+    return emb.squeeze().numpy()
+
+
+def embed_bytes_to_coords(audio_bytes):
+    """Decode + embed audio bytes, project to 2D, return (x, y) floats."""
+    emb    = embed_samples(decode_audio_to_samples(audio_bytes))
+    coords = reducer.transform([emb])[0]
+    return float(coords[0]), float(coords[1])
+
+
+# ── Routes ──────────────────────────────────────────────────────────────────
 @app.route("/")
 def serve_html():
     return send_file(HTML_FILE)
@@ -55,10 +97,11 @@ def embed():
 
     try:
         print(f"Embedding: {label}")
-        emb    = embed_audio_url(url)
-        coords = reducer.transform([emb])[0]
-        print(f"  -> ({coords[0]:.3f}, {coords[1]:.3f})")
-        return jsonify({"x": float(coords[0]), "y": float(coords[1]), "label": label})
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        x, y = embed_bytes_to_coords(resp.content)
+        print(f"  -> ({x:.3f}, {y:.3f})")
+        return jsonify({"x": x, "y": y, "label": label})
     except Exception as e:
         print(f"  Error: {e}")
         return jsonify({"error": str(e)}), 500
@@ -75,27 +118,55 @@ def embed_blob():
     print(f"  Audio size: {len(audio_bytes)} bytes")
 
     try:
-        audio = None
-        for fmt in ["mp3", "m4a", "wav", "ogg"]:
+        x, y = embed_bytes_to_coords(audio_bytes)
+        print(f"  Embedded -> ({x:.3f}, {y:.3f})")
+        return jsonify({"x": x, "y": y, "label": label})
+    except Exception as e:
+        print(f"  Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    """Generate audio via ElevenLabs (server-side key), embed it, persist to
+    R2, and return the plotted point."""
+    body   = request.get_json(silent=True) or {}
+    prompt = (body.get("prompt") or "").strip()
+
+    if not prompt:
+        return jsonify({"error": "No prompt provided"}), 400
+    if not ELEVENLABS_API_KEY:
+        return jsonify({"error": "Server not configured for generation"}), 500
+
+    try:
+        print(f"Generating: {prompt}")
+        el_resp = requests.post(
+            ELEVENLABS_URL,
+            headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+            json={
+                "prompt": prompt,
+                "output_format": "mp3_44100_128",
+                "music_length_ms": 30000,
+            },
+            timeout=240,
+        )
+        if not el_resp.ok:
             try:
-                audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format=fmt)
-                break
+                detail = el_resp.json().get("detail", {})
+                message = detail.get("message") if isinstance(detail, dict) else str(detail)
             except Exception:
-                continue
-        if audio is None:
-            return jsonify({"error": "Could not decode audio"}), 400
+                message = el_resp.text[:200]
+            return jsonify({"error": f"ElevenLabs error: {message or el_resp.status_code}"}), 502
 
-        audio   = audio.set_frame_rate(48000).set_channels(1)
-        samples = np.array(audio.get_array_of_samples()).astype(np.float32)
-        samples = samples / (2 ** (audio.sample_width * 8 - 1))
+        mp3_bytes = el_resp.content
+        print(f"  Generated {len(mp3_bytes)} bytes, embedding...")
 
-        inputs = feature_extractor(samples, return_tensors="pt", sampling_rate=48000)
-        with torch.no_grad():
-            emb = model.get_audio_features(**inputs)
-
-        coords = reducer.transform([emb.squeeze().numpy()])[0]
-        print(f"  Embedded -> ({coords[0]:.3f}, {coords[1]:.3f})")
-        return jsonify({"x": float(coords[0]), "y": float(coords[1]), "label": label})
+        x, y      = embed_bytes_to_coords(mp3_bytes)
+        audio_url = r2_client.upload_mp3(mp3_bytes)
+        record    = {"x": x, "y": y, "label": prompt,
+                     "audio_url": audio_url, "point_type": "generated"}
+        r2_client.append_to_manifest(record)
+        print(f"  Stored -> ({x:.3f}, {y:.3f}) {audio_url}")
+        return jsonify(record)
 
     except Exception as e:
         print(f"  Error: {e}")
@@ -105,31 +176,6 @@ def embed_blob():
 def health():
     return jsonify({"status": "ok"})
 
-def embed_audio_url(url):
-    response = requests.get(url, timeout=30)
-    response.raise_for_status()
-
-    audio = None
-    for fmt in ["m4a", "mp3", "wav"]:
-        try:
-            audio = AudioSegment.from_file(io.BytesIO(response.content), format=fmt)
-            break
-        except Exception:
-            continue
-    if audio is None:
-        raise ValueError("Could not decode audio — unsupported format")
-
-    audio   = audio.set_frame_rate(48000).set_channels(1)
-    samples = np.array(audio.get_array_of_samples()).astype(np.float32)
-    samples = samples / (2 ** (audio.sample_width * 8 - 1))
-
-    if len(samples) == 0:
-        raise ValueError("Empty audio")
-
-    inputs = feature_extractor(samples, return_tensors="pt", sampling_rate=48000)
-    with torch.no_grad():
-        emb = model.get_audio_features(**inputs)
-    return emb.squeeze().numpy()
 
 if __name__ == "__main__":
     print(f"\nCLAP server running on http://localhost:{PORT}")
