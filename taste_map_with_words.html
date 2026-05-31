@@ -288,9 +288,12 @@ function setView(v) {
 }
 
 // ── Server detection ──────────────────────────────────────────────────────────
+// CLAP embedding server. Point this at the Railway deployment (was http://localhost:8765).
+const CLAP_SERVER = 'https://music-library-song-generation-production.up.railway.app';
+
 async function checkServer() {
   try {
-    const r = await fetch('http://localhost:8765/health', {
+    const r = await fetch(CLAP_SERVER + '/health', {
       signal: AbortSignal.timeout(2000)
     });
     if (r.ok) {
@@ -350,7 +353,7 @@ async function generate() {
     formData.append('audio', blob, 'generated.mp3');
     formData.append('label', prompt);
 
-    const embedResp = await fetch('http://localhost:8765/embed_blob', {
+    const embedResp = await fetch(CLAP_SERVER + '/embed_blob', {
       method: 'POST',
       body: formData
     });
