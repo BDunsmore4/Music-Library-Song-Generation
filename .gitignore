@@ -6,3 +6,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
