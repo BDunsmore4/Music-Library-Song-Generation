@@ -172,6 +172,39 @@ def generate():
         print(f"  Error: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/search_track", methods=["POST"])
+def search_track():
+    """Look up a song on the iTunes Search API (no auth) and return candidate
+    matches with 30s preview URLs, so the user can confirm the right version
+    before embedding via /embed."""
+    body  = request.get_json(silent=True) or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return jsonify({"error": "No query provided"}), 400
+
+    try:
+        r = requests.get(
+            "https://itunes.apple.com/search",
+            params={"term": query, "entity": "song", "limit": 6},
+            timeout=15,
+        )
+        r.raise_for_status()
+        results = []
+        for item in r.json().get("results", []):
+            if not item.get("previewUrl"):
+                continue
+            results.append({
+                "name":        item.get("trackName"),
+                "artist":      item.get("artistName"),
+                "album":       item.get("collectionName"),
+                "preview_url": item.get("previewUrl"),
+                "artwork":     item.get("artworkUrl100"),
+            })
+        return jsonify({"results": results})
+    except Exception as e:
+        print(f"  Search error: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})

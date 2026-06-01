@@ -315,6 +315,75 @@ canvas {
   line-height: 1.4;
 }
 
+.panel-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 18px 0 8px;
+}
+#st-query {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  color: var(--text);
+  outline: none;
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+#st-query:focus { border-color: var(--accent); }
+#st-query::placeholder { color: var(--faint); }
+#st-search {
+  width: 100%;
+  padding: 9px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: opacity 0.15s;
+}
+#st-search:hover { opacity: 0.85; }
+#st-search:disabled { opacity: 0.4; cursor: not-allowed; }
+#st-status {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  min-height: 14px;
+  line-height: 1.4;
+}
+.st-result {
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.st-result .st-meta { color: var(--text); margin-bottom: 6px; line-height: 1.35; }
+.st-result .st-artist { color: var(--muted); }
+.st-result audio { width: 100%; height: 30px; margin-bottom: 6px; }
+.st-plot {
+  width: 100%;
+  padding: 6px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.st-plot:hover { opacity: 0.9; }
+.st-plot:disabled { opacity: 0.5; cursor: not-allowed; }
+
 #el-audio {
   display: none;
   width: 100%;
@@ -451,6 +520,13 @@ canvas {
         <div id="el-status"></div>
         <audio id="el-audio" controls></audio>
         <a id="el-download" download="elevenlabs_generated.mp3">↓ Download audio</a>
+
+        <div class="panel-subtitle">⟡ Find a track on the map</div>
+        <input id="st-query" type="text" placeholder="Search a song on Apple Music…"
+               onkeydown="if(event.key==='Enter')searchTrack()">
+        <button id="st-search" onclick="searchTrack()">Search</button>
+        <div id="st-status"></div>
+        <div id="st-results"></div>
       </div>
     </div>
 
@@ -487,19 +563,21 @@ const TYPE_COLOR = {
   genre:         '#fdcc0d',
   environmental: '#9be198',
   generated:     '#d45f5f',
+  searched:      '#b07cff',
 };
 const TYPE_LABEL = {
   audio:         'Music Library',
   genre:         'Genre Anchors',
   environmental: 'Environmental',
   generated:     'ElevenLabs Generated',
+  searched:      'Apple Music Search',
 };
 
 function ptColor(p) { return TYPE_COLOR[p.point_type] || '#7a8699'; }
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let allPts = [], visPts = [], genPts = [];
-let activeTypes = new Set(['audio','genre','environmental','generated']);
+let allPts = [], visPts = [], genPts = [], srchPts = [];
+let activeTypes = new Set(['audio','generated','searched']);
 let query = '', dragMoved = false;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
@@ -516,7 +594,7 @@ function buildFilters() {
   const bar   = document.getElementById('filterbar');
   const label = bar.querySelector('.filter-label');
   bar.innerHTML = ''; bar.appendChild(label);
-  ['audio','genre','environmental','generated'].forEach(type => {
+  ['audio','genre','environmental','generated','searched'].forEach(type => {
     const pill = document.createElement('div');
     pill.className = 'pill';
     const col = TYPE_COLOR[type];
@@ -535,7 +613,7 @@ function buildFilters() {
 
 function buildLegend() {
   document.getElementById('legend').innerHTML =
-    ['audio','genre','environmental','generated'].map(t => `
+    ['audio','genre','environmental','generated','searched'].map(t => `
       <div class="l-item">
         <div class="l-dot" style="background:${TYPE_COLOR[t]}"></div>
         ${TYPE_LABEL[t]}
@@ -614,6 +692,73 @@ async function generate() {
     status.textContent = `Error: ${e.message}`;
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ── Apple Music track search → embed ────────────────────────────────────────────
+async function searchTrack() {
+  const q      = document.getElementById('st-query').value.trim();
+  const btn    = document.getElementById('st-search');
+  const status = document.getElementById('st-status');
+  const out    = document.getElementById('st-results');
+  if (!q) { status.textContent = 'Enter a song name'; return; }
+  btn.disabled = true; status.textContent = 'Searching…'; out.innerHTML = '';
+  try {
+    const resp = await fetch(CLAP_SERVER + '/search_track', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: q})
+    });
+    if (!resp.ok) throw new Error(`Search error ${resp.status}`);
+    const results = (await resp.json()).results || [];
+    if (!results.length) { status.textContent = 'No matches with a preview'; return; }
+    status.textContent = 'Pick the right version, then plot it:';
+    results.forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'st-result';
+      const meta = document.createElement('div');
+      meta.className = 'st-meta';
+      meta.innerHTML = `${t.name} <span class="st-artist">— ${t.artist}${t.album ? ' · ' + t.album : ''}</span>`;
+      const audio = document.createElement('audio');
+      audio.controls = true; audio.preload = 'none'; audio.src = t.preview_url;
+      const plot = document.createElement('button');
+      plot.className = 'st-plot'; plot.textContent = 'Plot on map';
+      plot.onclick = () => plotTrack(t, plot);
+      div.appendChild(meta); div.appendChild(audio); div.appendChild(plot);
+      out.appendChild(div);
+    });
+  } catch(e) {
+    status.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function plotTrack(t, btn) {
+  const status = document.getElementById('st-status');
+  btn.disabled = true; btn.textContent = 'Embedding…';
+  try {
+    const label = `${t.name} — ${t.artist}`;
+    const resp = await fetch(CLAP_SERVER + '/embed', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: t.preview_url, label})
+    });
+    if (!resp.ok) {
+      let msg = `Embed error ${resp.status}`;
+      try { msg = (await resp.json()).error || msg; } catch(e) {}
+      throw new Error(msg);
+    }
+    const point = await resp.json();
+    srchPts.push({x:point.x, y:point.y, label, name:t.name, artists:t.artist,
+                  audio:t.preview_url, point_type:'searched'});
+    activeTypes.add('searched');
+    render2D(); updateStats();
+    btn.textContent = `Plotted (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`;
+    status.textContent = `Added “${t.name}” to the map.`;
+  } catch(e) {
+    status.textContent = `Error: ${e.message}`;
+    btn.disabled = false; btn.textContent = 'Plot on map';
   }
 }
 
@@ -701,6 +846,19 @@ function render2D() {
       ctx.restore();
     });
   }
+
+  // Searched (Apple Music) points — distinct colour, soft glow
+  if (activeTypes.has('searched')) {
+    srchPts.forEach(p => {
+      const {x,y} = toScr(p.x, p.y);
+      if (x<-10||x>W+10||y<-10||y>H+10) return;
+      ctx.save();
+      ctx.shadowColor = '#b07cff'; ctx.shadowBlur = 14;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#b07cff';
+      ctx.beginPath(); ctx.arc(x, y, baseR*2.2, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  }
 }
 
 // ── Interactions ──────────────────────────────────────────────────────────────
@@ -725,6 +883,7 @@ c2d.addEventListener('click', e => {
   const candidates = [
     ...visPts.filter(p=>activeTypes.has(p.point_type)),
     ...(activeTypes.has('generated') ? genPts : []),
+    ...(activeTypes.has('searched') ? srchPts : []),
   ];
   let nearest=null, minD=24;
   candidates.forEach(p => {
