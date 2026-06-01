@@ -27,6 +27,7 @@ R2_BUCKET            = os.environ.get("R2_BUCKET", "")
 R2_PUBLIC_BASE_URL   = os.environ.get("R2_PUBLIC_BASE_URL", "").rstrip("/")
 
 MANIFEST_KEY = "generated.json"
+SEARCHED_KEY = "searched.json"
 
 _manifest_lock = threading.Lock()
 _client = None
@@ -62,10 +63,10 @@ def upload_mp3(audio_bytes, key=None):
     return f"{R2_PUBLIC_BASE_URL}/{key}"
 
 
-def read_manifest():
-    """Return the list of generated-track records, or [] if none yet."""
+def read_manifest(key=MANIFEST_KEY):
+    """Return the list of records in the given manifest, or [] if none yet."""
     try:
-        obj = _get_client().get_object(Bucket=R2_BUCKET, Key=MANIFEST_KEY)
+        obj = _get_client().get_object(Bucket=R2_BUCKET, Key=key)
         return json.loads(obj["Body"].read())
     except ClientError as e:
         if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
@@ -73,20 +74,20 @@ def read_manifest():
         raise
 
 
-def write_manifest(records):
-    """Overwrite the manifest with the given list of records."""
+def write_manifest(records, key=MANIFEST_KEY):
+    """Overwrite the given manifest with the list of records."""
     _get_client().put_object(
         Bucket=R2_BUCKET,
-        Key=MANIFEST_KEY,
+        Key=key,
         Body=json.dumps(records).encode("utf-8"),
         ContentType="application/json",
     )
 
 
-def append_to_manifest(record):
-    """Append one record to the manifest atomically (within this process)."""
+def append_to_manifest(record, key=MANIFEST_KEY):
+    """Append one record to the given manifest atomically (within this process)."""
     with _manifest_lock:
-        records = read_manifest()
+        records = read_manifest(key)
         records.append(record)
-        write_manifest(records)
+        write_manifest(records, key)
         return records

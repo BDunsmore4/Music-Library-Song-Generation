@@ -74,11 +74,18 @@ def embed_samples(samples):
     return emb.squeeze().numpy()
 
 
-def embed_bytes_to_coords(audio_bytes):
-    """Decode + embed audio bytes, project to 2D, return (x, y) floats."""
+def embed_bytes_full(audio_bytes):
+    """Decode + embed audio bytes; return (x, y, embedding_vector). The raw CLAP
+    embedding is kept so points can be re-projected if UMAP is ever re-fit."""
     emb    = embed_samples(decode_audio_to_samples(audio_bytes))
     coords = reducer.transform([emb])[0]
-    return float(coords[0]), float(coords[1])
+    return float(coords[0]), float(coords[1]), emb
+
+
+def embed_bytes_to_coords(audio_bytes):
+    """Decode + embed audio bytes, project to 2D, return (x, y) floats."""
+    x, y, _ = embed_bytes_full(audio_bytes)
+    return x, y
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
@@ -160,14 +167,43 @@ def generate():
         mp3_bytes = el_resp.content
         print(f"  Generated {len(mp3_bytes)} bytes, embedding...")
 
-        x, y      = embed_bytes_to_coords(mp3_bytes)
+        x, y, emb = embed_bytes_full(mp3_bytes)
         audio_url = r2_client.upload_mp3(mp3_bytes)
         record    = {"x": x, "y": y, "label": prompt,
-                     "audio_url": audio_url, "point_type": "generated"}
+                     "audio_url": audio_url, "point_type": "generated",
+                     "embedding": [float(v) for v in emb]}
         r2_client.append_to_manifest(record)
         print(f"  Stored -> ({x:.3f}, {y:.3f}) {audio_url}")
-        return jsonify(record)
+        return jsonify({k: v for k, v in record.items() if k != "embedding"})
 
+    except Exception as e:
+        print(f"  Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/embed_track", methods=["POST"])
+def embed_track():
+    """Embed an external audio preview (e.g. an Apple Music preview URL) and
+    persist it to the searched.json manifest so searched tracks survive a
+    refresh — the same way generated tracks persist."""
+    body   = request.get_json(silent=True) or {}
+    url    = (body.get("url") or "").strip()
+    label  = body.get("label", "Track")
+    name   = body.get("name")
+    artist = body.get("artist")
+
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    try:
+        resp = requests.get(url, timeout=30)
+        resp.raise_for_status()
+        x, y, emb = embed_bytes_full(resp.content)
+        record = {"x": x, "y": y, "label": label, "name": name, "artist": artist,
+                  "audio_url": url, "point_type": "searched",
+                  "embedding": [float(v) for v in emb]}
+        r2_client.append_to_manifest(record, key=r2_client.SEARCHED_KEY)
+        print(f"  Embedded track -> ({x:.3f}, {y:.3f}) {label}")
+        return jsonify({k: v for k, v in record.items() if k != "embedding"})
     except Exception as e:
         print(f"  Error: {e}")
         return jsonify({"error": str(e)}), 500

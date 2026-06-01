@@ -649,6 +649,7 @@ const CLAP_SERVER = 'https://music-library-song-generation-production.up.railway
 const DATA_URL = './data.json';
 const R2_PUBLIC_BASE = 'https://pub-b3e7f539051b40f693e949e81b31dd44.r2.dev';   // ← set to your R2 public base URL (no trailing slash)
 const MANIFEST_URL = R2_PUBLIC_BASE + '/generated.json';
+const SEARCHED_URL = R2_PUBLIC_BASE + '/searched.json';
 
 async function checkServer() {
   try {
@@ -740,10 +741,10 @@ async function plotTrack(t, btn) {
   btn.disabled = true; btn.textContent = 'Embedding…';
   try {
     const label = `${t.name} — ${t.artist}`;
-    const resp = await fetch(CLAP_SERVER + '/embed', {
+    const resp = await fetch(CLAP_SERVER + '/embed_track', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: t.preview_url, label})
+      body: JSON.stringify({url: t.preview_url, label, name: t.name, artist: t.artist})
     });
     if (!resp.ok) {
       let msg = `Embed error ${resp.status}`;
@@ -955,6 +956,11 @@ async function boot() {
   try { gen = await (await fetch(MANIFEST_URL, {cache:'no-store'})).json(); }
   catch(e) { gen = []; }
   init({ points: base.points, generated: gen });
+  try {
+    const srch = await (await fetch(SEARCHED_URL, {cache:'no-store'})).json();
+    srchPts = (srch || []).map(p => ({...p, audio: p.audio_url || p.audio, point_type:'searched'}));
+  } catch(e) { srchPts = []; }
+  render2D(); updateStats();
   checkServer();
 }
 boot();
