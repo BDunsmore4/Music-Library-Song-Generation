@@ -864,10 +864,12 @@ function render2D() {
 }
 
 // ── Interactions ──────────────────────────────────────────────────────────────
+c2d.style.cursor = 'grab';
 c2d.addEventListener('mousedown', e => {
   drag2=true; dragMoved=false; lm2={x:e.clientX,y:e.clientY};
+  c2d.style.cursor = 'grabbing';
 });
-window.addEventListener('mouseup', () => drag2=false);
+window.addEventListener('mouseup', () => { drag2=false; c2d.style.cursor = 'grab'; });
 c2d.addEventListener('mouseleave', () => hideTooltip());
 c2d.addEventListener('mousemove', e => {
   if (drag2) {
@@ -929,6 +931,7 @@ function hover2D(e) {
     });
   }
   nearest ? showTooltip(e.clientX,e.clientY,nearest) : hideTooltip();
+  c2d.style.cursor = (nearest && (nearest.audio || nearest.preview_url)) ? 'pointer' : 'grab';
 }
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
