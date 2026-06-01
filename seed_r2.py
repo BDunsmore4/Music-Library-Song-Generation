@@ -4,12 +4,7 @@ write the initial generated.json manifest.
 
 Run locally (NOT on Railway) with the R2_* env vars set, e.g.:
 
-    export R2_ACCOUNT_ID=...
-    export R2_ACCESS_KEY_ID=...
-    export R2_SECRET_ACCESS_KEY=...
-    export R2_BUCKET=spotify-app-audio
-    export R2_PUBLIC_BASE_URL=https://pub-xxxx.r2.dev
-    python seed_r2.py
+
 
 Idempotent: re-running overwrites the same keys + manifest.
 """
