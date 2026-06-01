@@ -10,9 +10,16 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# Cache HuggingFace assets inside the image so cold starts don't re-download.
+ENV HF_HOME=/opt/hf_cache
+
 # Install deps first for better layer caching.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Bake the CLAP model into the image at build time so serverless cold starts
+# load it from local disk instead of downloading hundreds of MB each wake.
+RUN python -c "from transformers import ClapModel, AutoFeatureExtractor; ClapModel.from_pretrained('laion/clap-htsat-unfused'); AutoFeatureExtractor.from_pretrained('laion/clap-htsat-unfused')"
 
 # App code (incl. umap_reducer.pkl at repo root).
 COPY . .

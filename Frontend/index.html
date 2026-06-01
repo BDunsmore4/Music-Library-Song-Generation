@@ -495,8 +495,15 @@ canvas {
         <audio id="gen-src" controls></audio>
       </div>
 
+      <!-- Waking (serverless cold start) -->
+      <div id="waking-section" style="display:none">
+        <p>⏳ Waking up the live server…<br>
+          <span class="hint">first load can take ~30–60s — generation + search will appear shortly</span>
+        </p>
+      </div>
+
       <!-- Offline -->
-      <div id="offline-section">
+      <div id="offline-section" style="display:none">
         <p>
           Live generation is currently offline.<br>
           <span class="hint">● Click any point to hear that track</span>
@@ -651,17 +658,29 @@ const R2_PUBLIC_BASE = 'https://pub-b3e7f539051b40f693e949e81b31dd44.r2.dev';   
 const MANIFEST_URL = R2_PUBLIC_BASE + '/generated.json';
 const SEARCHED_URL = R2_PUBLIC_BASE + '/searched.json';
 
-async function checkServer() {
+function setServerState(state) {  // 'live' | 'waking' | 'offline'
+  document.getElementById('live-section').style.display    = state==='live'    ? 'block' : 'none';
+  document.getElementById('waking-section').style.display  = state==='waking'  ? 'block' : 'none';
+  document.getElementById('offline-section').style.display = state==='offline' ? 'block' : 'none';
+}
+
+async function pingHealth(timeoutMs) {
   try {
-    const r = await fetch(CLAP_SERVER + '/health', { signal: AbortSignal.timeout(2000) });
-    if (r.ok) {
-      document.getElementById('live-section').style.display    = 'block';
-      document.getElementById('offline-section').style.display = 'none';
-    }
-  } catch(e) {
-    document.getElementById('live-section').style.display    = 'none';
-    document.getElementById('offline-section').style.display = 'block';
+    const r = await fetch(CLAP_SERVER + '/health', { signal: AbortSignal.timeout(timeoutMs) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+
+async function checkServer() {
+  // Fast path: already warm?
+  if (await pingHealth(3000)) { setServerState('live'); return; }
+  // Cold serverless start — the ping above also wakes it. Be patient (~90s).
+  setServerState('waking');
+  for (let i = 0; i < 12; i++) {
+    if (await pingHealth(8000)) { setServerState('live'); return; }
+    await new Promise(r => setTimeout(r, 2000));
   }
+  setServerState('offline');
 }
 
 // ── ElevenLabs generation ─────────────────────────────────────────────────────
@@ -864,12 +883,10 @@ function render2D() {
 }
 
 // ── Interactions ──────────────────────────────────────────────────────────────
-c2d.style.cursor = 'grab';
 c2d.addEventListener('mousedown', e => {
   drag2=true; dragMoved=false; lm2={x:e.clientX,y:e.clientY};
-  c2d.style.cursor = 'grabbing';
 });
-window.addEventListener('mouseup', () => { drag2=false; c2d.style.cursor = 'grab'; });
+window.addEventListener('mouseup', () => drag2=false);
 c2d.addEventListener('mouseleave', () => hideTooltip());
 c2d.addEventListener('mousemove', e => {
   if (drag2) {
