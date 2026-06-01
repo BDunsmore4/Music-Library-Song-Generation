@@ -523,7 +523,8 @@ canvas {
 
         <div class="panel-subtitle">⟡ Embed a new track on the map</div>
         <input id="st-query" type="text" placeholder="Search a song on Apple Music…"
-               onkeydown="if(event.key==='Enter')searchTrack()">
+               onkeydown="if(event.key==='Enter')searchTrack()"
+               oninput="if(!this.value.trim()){document.getElementById('st-results').innerHTML='';document.getElementById('st-status').textContent='';}">
         <button id="st-search" onclick="searchTrack()">Search</button>
         <div id="st-status"></div>
         <div id="st-results"></div>
@@ -563,7 +564,7 @@ const TYPE_COLOR = {
   genre:         '#fdcc0d',
   environmental: '#9be198',
   generated:     '#d45f5f',
-  searched:      '#b07cff',
+  searched:      '#9333ea',
 };
 const TYPE_LABEL = {
   audio:         'Music Library',
@@ -713,7 +714,7 @@ async function searchTrack() {
     const results = (await resp.json()).results || [];
     if (!results.length) { status.textContent = 'No matches with a preview'; return; }
     status.textContent = 'Pick the right version, then plot it:';
-    results.forEach(t => {
+    results.slice(0, 3).forEach(t => {
       const div = document.createElement('div');
       div.className = 'st-result';
       const meta = document.createElement('div');
@@ -754,7 +755,7 @@ async function plotTrack(t, btn) {
                   audio:t.preview_url, point_type:'searched'});
     activeTypes.add('searched');
     render2D(); updateStats();
-    btn.textContent = `Plotted (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`;
+    document.getElementById('st-results').innerHTML = '';
     status.textContent = `Added “${t.name}” to the map.`;
   } catch(e) {
     status.textContent = `Error: ${e.message}`;
@@ -853,8 +854,8 @@ function render2D() {
       const {x,y} = toScr(p.x, p.y);
       if (x<-10||x>W+10||y<-10||y>H+10) return;
       ctx.save();
-      ctx.shadowColor = '#b07cff'; ctx.shadowBlur = 14;
-      ctx.globalAlpha = 0.9; ctx.fillStyle = '#b07cff';
+      ctx.shadowColor = '#9333ea'; ctx.shadowBlur = 14;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#9333ea';
       ctx.beginPath(); ctx.arc(x, y, baseR*2.2, 0, Math.PI*2); ctx.fill();
       ctx.restore();
     });
