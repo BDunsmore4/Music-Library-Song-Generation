@@ -1,0 +1,10 @@
+# Keep the build context small and secrets out of the image
+.venv/
+.git/
+.env
+__pycache__/
+*.pyc
+.idea/
+.claude/
+Frontend/
+*.html
