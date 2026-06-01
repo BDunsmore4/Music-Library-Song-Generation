@@ -921,6 +921,13 @@ function hover2D(e) {
       if (d<minD) { minD=d; nearest=p; }
     });
   }
+  if (activeTypes.has('searched')) {
+    srchPts.forEach(p => {
+      const s=toScr(p.x,p.y);
+      const d=Math.hypot(s.x-mx,s.y-my);
+      if (d<minD) { minD=d; nearest=p; }
+    });
+  }
   nearest ? showTooltip(e.clientX,e.clientY,nearest) : hideTooltip();
 }
 
@@ -928,7 +935,9 @@ function hover2D(e) {
 const tt = document.getElementById('tooltip');
 function showTooltip(mx,my,p) {
   const c    = TYPE_COLOR[p.point_type] || '#4f8ef7';
-  const name = p.point_type==='generated' ? (p.label||'Generated') : (p.name||'Unknown');
+  const name = p.point_type==='generated'
+    ? (p.label||'Generated')
+    : (p.name || p.label || 'Unknown');
   tt.style.borderColor = c + '66';
   tt.innerHTML = `
     <div class="tt-name" style="color:${c}">${name}</div>
@@ -936,7 +945,7 @@ function showTooltip(mx,my,p) {
     ${p.album   ? `<div class="tt-sub">${p.album}</div>`   : ''}
     <div class="tt-type">
       ${TYPE_LABEL[p.point_type]||p.point_type}
-      ${p.point_type==='generated' ? ' · click to play' : ''}
+      ${(p.point_type==='generated'||p.point_type==='searched') ? ' · click to play' : ''}
     </div>`;
   tt.style.display = 'block';
   let tx=mx+14, ty=my+14;
@@ -958,7 +967,7 @@ async function boot() {
   init({ points: base.points, generated: gen });
   try {
     const srch = await (await fetch(SEARCHED_URL, {cache:'no-store'})).json();
-    srchPts = (srch || []).map(p => ({...p, audio: p.audio_url || p.audio, point_type:'searched'}));
+    srchPts = (srch || []).map(p => ({...p, audio: p.audio_url || p.audio, artists: p.artists || p.artist, point_type:'searched'}));
   } catch(e) { srchPts = []; }
   render2D(); updateStats();
   checkServer();
