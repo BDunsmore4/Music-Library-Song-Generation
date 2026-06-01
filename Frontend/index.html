@@ -430,7 +430,7 @@ canvas {
       <div id="offline-section">
         <p>
           Live generation is currently offline.<br>
-          <span class="hint">● Click a red dot to hear a generated track</span>
+          <span class="hint">● Click any point to hear that track</span>
         </p>
         <p style="margin-top:10px">
           <span class="contact">Contact bendunsmore@icloud.com</span> for a demo.
@@ -718,20 +718,28 @@ c2d.addEventListener('mousemove', e => {
 });
 
 c2d.addEventListener('click', e => {
-  if (dragMoved || !activeTypes.has('generated')) return;
+  if (dragMoved) return;
   const r=c2d.getBoundingClientRect();
   const mx=e.clientX-r.left, my=e.clientY-r.top;
+  // Search every visible point — library tracks (preview_url) and generated tracks (audio).
+  const candidates = [
+    ...visPts.filter(p=>activeTypes.has(p.point_type)),
+    ...(activeTypes.has('generated') ? genPts : []),
+  ];
   let nearest=null, minD=24;
-  genPts.forEach(p => {
+  candidates.forEach(p => {
     const s=toScr(p.x,p.y);
     const d=Math.hypot(s.x-mx,s.y-my);
     if (d<minD) { minD=d; nearest=p; }
   });
-  if (nearest?.audio) {
+  const audioUrl = nearest && (nearest.audio || nearest.preview_url);
+  if (audioUrl) {
+    const label = nearest.label
+      || (nearest.name ? nearest.name + (nearest.artists ? ' — ' + nearest.artists : '') : 'Track');
     const player = document.getElementById('gen-player');
     const src    = document.getElementById('gen-src');
-    document.getElementById('gen-label').textContent = nearest.label;
-    src.src = nearest.audio; player.style.display='block';
+    document.getElementById('gen-label').textContent = label;
+    src.src = audioUrl; player.style.display='block';
     src.load(); src.play();
   }
 });
