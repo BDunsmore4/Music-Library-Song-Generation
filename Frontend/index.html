@@ -813,9 +813,19 @@ function toScr(px, py) {
   return {x:(fx-W/2)*zoom2+W/2+pan.x, y:(fy-H/2)*zoom2+H/2+pan.y};
 }
 
-function zoomBy(f) {
-  pan.x *= f; pan.y *= f; zoom2 *= f; render2D();
+const ZMIN = 0.35, ZMAX = 60;
+// Zoom by factor f, keeping the world point under (mx,my) fixed on screen.
+function zoomAt(mx, my, f) {
+  const newZoom = Math.min(ZMAX, Math.max(ZMIN, zoom2 * f));
+  f = newZoom / zoom2;                 // re-derive after clamping
+  const A = mx - c2d.width/2, B = my - c2d.height/2;
+  pan.x = A*(1-f) + pan.x*f;
+  pan.y = B*(1-f) + pan.y*f;
+  zoom2 = newZoom;
+  render2D();
 }
+// +/− buttons zoom about the canvas centre.
+function zoomBy(f) { zoomAt(c2d.width/2, c2d.height/2, f); }
 
 // Smoothly centre a freshly-plotted point, then pulse it so it's easy to spot.
 function flyToAndPulse(p) {
@@ -951,6 +961,17 @@ c2d.addEventListener('mousemove', e => {
     pan.x+=dx; pan.y+=dy; lm2={x:e.clientX,y:e.clientY}; render2D();
   } else hover2D(e);
 });
+// Scroll / trackpad zoom, centred on the cursor.
+c2d.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = c2d.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let dy = e.deltaY;
+  if (e.deltaMode === 1) dy *= 16;            // lines → ~pixels
+  else if (e.deltaMode === 2) dy *= c2d.height; // pages
+  dy = Math.max(-120, Math.min(120, dy));     // stabilise big jumps
+  zoomAt(mx, my, Math.pow(1.0015, -dy));      // smooth ~15%/notch
+}, { passive: false });
 
 c2d.addEventListener('click', e => {
   if (dragMoved) return;
