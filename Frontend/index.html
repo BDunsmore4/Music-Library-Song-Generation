@@ -452,6 +452,40 @@ canvas {
 .tt-name  { font-weight: 600; margin-bottom: 1px; }
 .tt-sub   { color: var(--muted); font-size: 11px; }
 .tt-type  { font-size: 10px; color: var(--faint); margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border); }
+/* ── Guided tour ── */
+#tour { position:fixed; inset:0; z-index:2000; display:none; }
+#tour.tour-centered { background:rgba(8,11,17,0.80); }
+#tour-spot {
+  position:absolute; border-radius:12px; pointer-events:none; opacity:0;
+  box-shadow: 0 0 0 9999px rgba(8,11,17,0.80), 0 0 0 2px var(--accent), 0 0 22px rgba(79,142,247,0.5);
+  transition: top .45s cubic-bezier(.4,0,.2,1), left .45s cubic-bezier(.4,0,.2,1),
+              width .45s cubic-bezier(.4,0,.2,1), height .45s cubic-bezier(.4,0,.2,1), opacity .35s;
+}
+#tour-card {
+  position:absolute; width:300px; max-width:calc(100vw - 32px); box-sizing:border-box;
+  background:#10151c; border:1px solid var(--border-2); border-radius:14px; padding:18px 18px 14px;
+  color:var(--text); box-shadow:0 18px 50px rgba(0,0,0,.55);
+  transition: top .45s cubic-bezier(.4,0,.2,1), left .45s cubic-bezier(.4,0,.2,1), opacity .35s;
+}
+#tour-step  { font-size:10px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+#tour-title { font-size:16px; font-weight:700; margin-bottom:8px; }
+#tour-body  { font-size:13px; line-height:1.55; color:var(--muted); margin-bottom:16px; }
+#tour-body em { color:var(--text); font-style:normal; }
+#tour-controls { display:flex; align-items:center; gap:8px; }
+#tour-controls button {
+  font-family:inherit; font-size:12px; font-weight:600; border-radius:8px; padding:7px 14px; cursor:pointer;
+  border:1px solid var(--border-2); background:transparent; color:var(--muted); transition:opacity .15s;
+}
+#tour-skip { padding-left:0; border:none; }
+#tour-next { background:var(--accent); border-color:var(--accent); color:#fff; }
+#tour-controls button:hover { opacity:.85; }
+#tour-launch {
+  position:fixed; left:16px; bottom:16px; z-index:900;
+  font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
+  background:rgba(16,21,28,0.9); color:var(--accent); border:1px solid var(--accent);
+  border-radius:999px; padding:8px 14px; backdrop-filter:blur(6px); transition:opacity .15s;
+}
+#tour-launch:hover { opacity:.85; }
 </style>
 </head>
 <body>
@@ -486,7 +520,7 @@ canvas {
   <div id="side-panel">
 
     <!-- Generator section -->
-    <div class="panel-section">
+    <div class="panel-section" id="gen-panel">
       <div class="panel-title">⟡ ElevenLabs Generate</div>
 
       <!-- Plays when red dot clicked -->
@@ -560,6 +594,23 @@ canvas {
 </div>
 
 <div id="tooltip"></div>
+
+<!-- Guided tour -->
+<div id="tour">
+  <div id="tour-spot"></div>
+  <div id="tour-card">
+    <div id="tour-step"></div>
+    <div id="tour-title"></div>
+    <div id="tour-body"></div>
+    <div id="tour-controls">
+      <button id="tour-skip" type="button">Skip</button>
+      <span style="flex:1"></span>
+      <button id="tour-back" type="button">Back</button>
+      <button id="tour-next" type="button">Next</button>
+    </div>
+  </div>
+</div>
+<button id="tour-launch" type="button">Show me around</button>
 
 <script>
 // ── Data ──────────────────────────────────────────────────────────────────────
@@ -1069,7 +1120,87 @@ async function boot() {
   render2D(); updateStats();
   checkServer();
 }
+// ── Guided tour ─────────────────────────────────────────────────────────────
+const TOUR = [
+  { title:"Welcome 👋", body:"This is a living map of my music taste — every dot is a track, placed by how it <em>sounds</em>. Here's the 30-second tour.", target:null },
+  { title:"Hear the map", body:"Click any dot to play it. Scroll to zoom into a neighbourhood, drag to pan.", target:"#map-wrap" },
+  { title:"Find a track", body:"Search the library by song or artist up here.", target:"#search" },
+  { title:"Generate music", body:"Type a prompt and ElevenLabs creates a track — then watch where it lands on the map.", target:"#el-prompt", fallback:"#gen-panel" },
+  { title:"Add what you love", body:"Search Apple Music and plot tracks you like. New songs always welcome 💜", target:"#st-query", fallback:"#gen-panel" },
+  { title:"Dive in 🎶", body:"That's it — explore your way around.", target:null },
+];
+let tourIdx = 0;
+
+function tourRect(step) {
+  for (const sel of [step.target, step.fallback]) {
+    if (!sel) continue;
+    const el = document.querySelector(sel);
+    if (el && el.offsetParent !== null) {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height) return r;
+    }
+  }
+  return null;
+}
+
+function showTourStep(i) {
+  tourIdx = Math.max(0, Math.min(TOUR.length-1, i));
+  const step = TOUR[tourIdx];
+  const tour = document.getElementById('tour');
+  const spot = document.getElementById('tour-spot');
+  const card = document.getElementById('tour-card');
+  document.getElementById('tour-title').innerHTML = step.title;
+  document.getElementById('tour-body').innerHTML  = step.body;
+  document.getElementById('tour-step').textContent = `${tourIdx+1} / ${TOUR.length}`;
+  document.getElementById('tour-back').style.visibility = tourIdx===0 ? 'hidden' : 'visible';
+  document.getElementById('tour-next').textContent = tourIdx===TOUR.length-1 ? 'Done' : 'Next';
+
+  const rect = tourRect(step), vw = window.innerWidth, vh = window.innerHeight;
+  const cw = 300, ch = 190, gap = 16;
+  if (rect) {
+    const pad = 8;
+    spot.style.opacity = '1';
+    spot.style.top = (rect.top-pad)+'px'; spot.style.left = (rect.left-pad)+'px';
+    spot.style.width = (rect.width+pad*2)+'px'; spot.style.height = (rect.height+pad*2)+'px';
+    tour.classList.remove('tour-centered');
+    let left, top;
+    if (rect.left > vw*0.55) { left = rect.left - cw - gap; top = rect.top; }      // right-side target
+    else if (rect.top < vh*0.4) { top = rect.bottom + gap; left = rect.left; }       // top target → below
+    else { top = rect.top - ch - gap; left = rect.left; }                            // else above
+    card.style.left = Math.max(16, Math.min(left, vw-cw-16)) + 'px';
+    card.style.top  = Math.max(16, Math.min(top,  vh-ch-16)) + 'px';
+    card.style.transform = 'none';
+  } else {
+    spot.style.opacity = '0';
+    tour.classList.add('tour-centered');
+    card.style.left = '50%'; card.style.top = '50%'; card.style.transform = 'translate(-50%,-50%)';
+  }
+}
+
+function startTour() {
+  document.getElementById('tour').style.display = 'block';
+  requestAnimationFrame(() => showTourStep(0));
+}
+function endTour() {
+  document.getElementById('tour').style.display = 'none';
+  try { localStorage.setItem('tasteMapTourSeen','1'); } catch(e){}
+}
+function maybeAutoTour() {
+  let seen = false;
+  try { seen = localStorage.getItem('tasteMapTourSeen'); } catch(e){}
+  if (!seen) startTour();
+}
+
+document.getElementById('tour-next').onclick   = () => { tourIdx===TOUR.length-1 ? endTour() : showTourStep(tourIdx+1); };
+document.getElementById('tour-back').onclick   = () => showTourStep(tourIdx-1);
+document.getElementById('tour-skip').onclick   = endTour;
+document.getElementById('tour-launch').onclick = startTour;
+window.addEventListener('resize', () => {
+  if (document.getElementById('tour').style.display === 'block') showTourStep(tourIdx);
+});
+
 boot();
+maybeAutoTour();
 </script>
 </body>
 </html>
