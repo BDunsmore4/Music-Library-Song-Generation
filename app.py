@@ -221,7 +221,7 @@ def search_track():
     try:
         r = requests.get(
             "https://itunes.apple.com/search",
-            params={"term": query, "entity": "song", "limit": 6},
+            params={"term": query, "entity": "song", "limit": 12},
             timeout=15,
         )
         r.raise_for_status()

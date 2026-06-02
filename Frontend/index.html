@@ -359,6 +359,7 @@ canvas {
   min-height: 14px;
   line-height: 1.4;
 }
+#st-results { max-height: 300px; overflow-y: auto; }
 .st-result {
   border: 1px solid var(--border-2);
   border-radius: var(--radius);
@@ -480,10 +481,10 @@ canvas {
 #tour-next { background:var(--accent); border-color:var(--accent); color:#fff; }
 #tour-controls button:hover { opacity:.85; }
 #tour-launch {
-  position:fixed; left:16px; bottom:16px; z-index:900;
+  flex-shrink:0;
   font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
-  background:rgba(16,21,28,0.9); color:var(--accent); border:1px solid var(--accent);
-  border-radius:999px; padding:8px 14px; backdrop-filter:blur(6px); transition:opacity .15s;
+  background:transparent; color:var(--accent); border:1px solid var(--accent);
+  border-radius:999px; padding:6px 14px; white-space:nowrap; transition:opacity .15s;
 }
 #tour-launch:hover { opacity:.85; }
 </style>
@@ -494,6 +495,7 @@ canvas {
 <header>
   <div class="logo">Taste <span>Map</span></div>
   <input type="text" id="search" placeholder="Search tracks, artists…">
+  <button id="tour-launch" type="button">Show me around</button>
   <span id="stats">—</span>
 </header>
 
@@ -610,7 +612,6 @@ canvas {
     </div>
   </div>
 </div>
-<button id="tour-launch" type="button">Show me around</button>
 
 <script>
 // ── Data ──────────────────────────────────────────────────────────────────────
@@ -788,7 +789,7 @@ async function searchTrack() {
     const results = (await resp.json()).results || [];
     if (!results.length) { status.textContent = 'No matches with a preview'; return; }
     status.textContent = 'Pick the right version, then plot it:';
-    results.slice(0, 3).forEach(t => {
+    results.slice(0, 10).forEach(t => {
       const div = document.createElement('div');
       div.className = 'st-result';
       const meta = document.createElement('div');
