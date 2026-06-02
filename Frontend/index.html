@@ -970,7 +970,7 @@ c2d.addEventListener('wheel', e => {
   if (e.deltaMode === 1) dy *= 16;            // lines → ~pixels
   else if (e.deltaMode === 2) dy *= c2d.height; // pages
   dy = Math.max(-120, Math.min(120, dy));     // stabilise big jumps
-  zoomAt(mx, my, Math.pow(1.0020, -dy));      // smooth ~18%/notch
+  zoomAt(mx, my, Math.pow(1.0030, -dy));      // smooth ~26%/notch
 }, { passive: false });
 
 c2d.addEventListener('click', e => {
