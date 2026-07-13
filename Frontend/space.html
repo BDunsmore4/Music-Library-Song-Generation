@@ -9,7 +9,7 @@
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;background:#0a0d14;color:#dce3f0;
   font-family:'Inter',system-ui,sans-serif;font-size:13px}
-#scene{position:fixed;inset:0;display:block}
+#scene{position:fixed;inset:0;display:block;touch-action:none}
 canvas{display:block}
 
 /* hover tooltip */
@@ -45,6 +45,24 @@ a.back:hover{border-color:#4f8ef7}
 #np b{font-weight:600} #np .a{color:#7a8699}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 
+/* mobile hint (shown only on small screens) */
+#mkeys{display:none;font-size:11px;color:#7a8699;background:#10141ecc;
+  border:1px solid #222b3d;border-radius:8px;padding:8px 11px}
+
+/* ── Phone layout: no WASD, tap-to-fly + swipe-to-look, small minimap ── */
+@media (max-width:700px){
+  #keys,#speedbox{display:none}
+  #mkeys{display:block}
+  #hud{top:10px;left:10px;gap:6px}
+  .logo{font-size:13px}
+  #count{top:11px;right:12px}
+  #mapwrap{bottom:10px;left:10px;padding:6px}
+  #mapwrap .ml{font-size:9px;margin-bottom:3px}
+  #minimap{width:104px;height:104px}
+  #np{bottom:12px;font-size:12px;padding:8px 14px;max-width:82vw}
+  a.back{bottom:10px;right:10px;padding:6px 10px;font-size:11px}
+}
+
 /* minimap */
 #mapwrap{position:fixed;bottom:14px;left:16px;z-index:15;background:#0c0f17cc;
   border:1px solid #222b3d;border-radius:10px;padding:8px}
@@ -72,6 +90,7 @@ a.back:hover{border-color:#4f8ef7}
   <div id="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly · <kbd>Q</kbd>/<kbd>E</kbd> down/up ·
     drag to look · <kbd>Shift</kbd> boost · scroll = speed</div>
   <div id="speedbox">speed <input id="speed" type="range" min="0.15" max="5" step="0.05" value="1"><span id="speedval">1.0×</span></div>
+  <div id="mkeys">👆 tap a dot to fly · swipe to look</div>
 </div>
 <div id="count"></div>
 <a class="back" href="./index.html">← back to 2D map</a>
@@ -171,6 +190,34 @@ cv.addEventListener('wheel',e=>{e.preventDefault();
   $('#speed').value=speedMult; $('#speedval').textContent=speedMult.toFixed(2)+'×';
 },{passive:false});
 
+// ── Touch controls (phone): one-finger swipe = look, tap a dot = fly to it ──
+let tSX=0,tSY=0,tLX=0,tLY=0,tMoved=false,tT=0;
+cv.addEventListener('touchstart',e=>{ if(e.touches.length!==1)return; e.preventDefault();
+  const t=e.touches[0]; tSX=tLX=t.clientX; tSY=tLY=t.clientY; tMoved=false; tT=performance.now();
+},{passive:false});
+cv.addEventListener('touchmove',e=>{ if(e.touches.length!==1)return; e.preventDefault();
+  const t=e.touches[0], dx=t.clientX-tLX, dy=t.clientY-tLY; tLX=t.clientX; tLY=t.clientY;
+  if(Math.abs(t.clientX-tSX)>8||Math.abs(t.clientY-tSY)>8) tMoved=true;
+  yaw-=dx*0.005; pitch=Math.max(-1.45,Math.min(1.45,pitch-dy*0.005)); flying=null;
+},{passive:false});
+cv.addEventListener('touchend',()=>{
+  if(tMoved||performance.now()-tT>500) return;          // a swipe / long-press, not a tap
+  const i=pickAtScreen(tSX,tSY);
+  if(i>=0){const p=POINTS[i]; flyTo(new THREE.Vector3(p.x,p.y,p.z));}
+});
+// nearest point to a screen position (robust for finger taps among dense points)
+const _pv=new THREE.Vector3(), _fw=new THREE.Vector3();
+function pickAtScreen(cx,cy){
+  camera.getWorldDirection(_fw); const cp=camera.position; let best=-1,bd=70*70;
+  for(let i=0;i<POINTS.length;i++){const p=POINTS[i];
+    _pv.set(p.x-cp.x,p.y-cp.y,p.z-cp.z); if(_pv.dot(_fw)<=0) continue;   // behind camera
+    _pv.set(p.x,p.y,p.z).project(camera);
+    const sx=(_pv.x*0.5+0.5)*innerWidth, sy=(-_pv.y*0.5+0.5)*innerHeight;
+    const dd=(sx-cx)**2+(sy-cy)**2; if(dd<bd){bd=dd;best=i;}
+  }
+  return best;
+}
+
 // ── Hover pick ─────────────────────────────────────────────────────────────
 const ray=new THREE.Raycaster(); ray.params.Points.threshold=7;
 const mouse={x:2,y:2,px:0,py:0}; const tip=$('#tip');
@@ -208,7 +255,9 @@ function drawMinimap(){
   mx.fillStyle='#fff';mx.beginPath();mx.arc(cx,cy,3,0,7);mx.fill();
 }
 mm.addEventListener('click',e=>{const r=mm.getBoundingClientRect();
-  const[wx,wy]=mapToWorld(e.clientX-r.left,e.clientY-r.top);
+  // scale click coords to the canvas's internal size (it's CSS-shrunk on phones)
+  const px=(e.clientX-r.left)*(mm.width/r.width), py=(e.clientY-r.top)*(mm.height/r.height);
+  const[wx,wy]=mapToWorld(px,py);
   // nearest track to the clicked (x,y), then fly to its 3D position
   let best=null,bd=1e9;
   for(const p of POINTS){const dd=(p.x-wx)**2+(p.y-wy)**2; if(dd<bd){bd=dd;best=p;}}
