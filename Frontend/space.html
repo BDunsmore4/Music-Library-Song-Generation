@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Taste Space — 3D</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#0a0d14;color:#dce3f0;
+  font-family:'Inter',system-ui,sans-serif;font-size:13px}
+#scene{position:fixed;inset:0;display:block}
+canvas{display:block}
+
+/* hover tooltip */
+#tip{position:fixed;pointer-events:none;background:#0a0d14e8;border:1px solid #2e3a50;
+  border-radius:7px;padding:7px 10px;font-size:12px;opacity:0;transition:opacity .08s;
+  transform:translate(-50%,-130%);white-space:nowrap;z-index:20;box-shadow:0 10px 30px #000a}
+#tip b{font-weight:600;display:block} #tip span{color:#7a8699;font-size:11px}
+
+/* HUD */
+#hud{position:fixed;top:14px;left:16px;z-index:15;display:flex;flex-direction:column;gap:8px}
+.logo{font-weight:600;letter-spacing:.08em;font-size:14px}
+.logo span{color:#4f8ef7}
+#keys{font-size:11px;color:#7a8699;line-height:1.7;background:#10141ecc;
+  border:1px solid #222b3d;border-radius:8px;padding:8px 11px}
+kbd{background:#1d2436;border:1px solid #2e3a50;border-radius:4px;padding:1px 5px;font:inherit;font-size:10px;color:#dce3f0}
+#speedbox{display:flex;align-items:center;gap:8px;font-size:11px;color:#7a8699;
+  background:#10141ecc;border:1px solid #222b3d;border-radius:8px;padding:7px 11px}
+#speed{width:120px;accent-color:#4f8ef7}
+#count{position:fixed;top:14px;right:16px;z-index:15;font-size:11px;color:#7a8699}
+a.back{position:fixed;bottom:14px;right:16px;z-index:15;color:#4f8ef7;text-decoration:none;
+  font-size:12px;background:#10141ecc;border:1px solid #222b3d;border-radius:8px;padding:7px 12px}
+a.back:hover{border-color:#4f8ef7}
+
+/* now playing */
+#np{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:16;
+  background:#10141eee;border:1px solid #2e3a50;border-radius:30px;padding:9px 18px;
+  font-size:13px;display:none;align-items:center;gap:11px;max-width:62vw;
+  box-shadow:0 10px 30px #0008}
+#np.show{display:flex}
+#np i{width:7px;height:7px;border-radius:50%;background:#4f8ef7;flex-shrink:0;
+  animation:pulse 1.4s ease-in-out infinite}
+#np .t{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#np b{font-weight:600} #np .a{color:#7a8699}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* minimap */
+#mapwrap{position:fixed;bottom:14px;left:16px;z-index:15;background:#0c0f17cc;
+  border:1px solid #222b3d;border-radius:10px;padding:8px}
+#mapwrap .ml{font-size:10px;color:#7a8699;letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
+#minimap{display:block;cursor:crosshair;border-radius:5px}
+
+/* enter gate */
+#gate{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 42%,#141a2c 0%,#0a0d14 72%)}
+#gate.hidden{display:none}
+.card{text-align:center;max-width:440px;padding:30px}
+.card h1{font-size:24px;font-weight:600;margin-bottom:8px;letter-spacing:.04em}
+.card p{color:#7a8699;font-size:13px;line-height:1.6;margin-bottom:22px}
+.enter{padding:13px 30px;border:none;border-radius:9px;background:#4f8ef7;color:#fff;
+  font:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:filter .15s}
+.enter:hover{filter:brightness(1.1)} .enter:disabled{opacity:.5;cursor:default}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="tip"></div>
+
+<div id="hud">
+  <div class="logo">TASTE<span>SPACE</span></div>
+  <div id="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly · <kbd>Q</kbd>/<kbd>E</kbd> down/up ·
+    drag to look · <kbd>Shift</kbd> boost · scroll = speed</div>
+  <div id="speedbox">speed <input id="speed" type="range" min="0.15" max="5" step="0.05" value="1"><span id="speedval">1.0×</span></div>
+</div>
+<div id="count"></div>
+<a class="back" href="./index.html">← back to 2D map</a>
+<div id="np"><i></i><div class="t"><b id="np-name"></b> <span class="a" id="np-art"></span></div></div>
+
+<div id="mapwrap">
+  <div class="ml">map · click to fly</div>
+  <canvas id="minimap" width="180" height="180"></canvas>
+</div>
+
+<div id="gate"><div class="card">
+  <h1>Your taste, in 3D</h1>
+  <p>Fly through 7,100 tracks laid out by how they sound. Drag to look, WASD to move. Click a spot on the map to jump there.</p>
+  <button class="enter" id="enter" disabled>Loading…</button>
+</div></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const $=s=>document.querySelector(s);
+const cv=$('#scene');
+
+// ── Renderer / scene / camera ──────────────────────────────────────────────
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0a0d14);
+scene.fog=new THREE.FogExp2(0x0a0d14,0.00055);         // depth cue: distance fades to bg
+const camera=new THREE.PerspectiveCamera(70,1,0.1,16000);
+camera.position.set(0,0,320);                           // start INSIDE the cloud
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
+addEventListener('resize',resize); resize();
+
+// soft round point sprite (so points read as clean dots, not squares)
+function disc(){const c=document.createElement('canvas');c.width=c.height=64;const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,'#fff');g.addColorStop(.5,'#fff');
+  g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.beginPath();x.arc(32,32,32,0,7);x.fill();
+  const t=new THREE.CanvasTexture(c);return t;}
+
+let POINTS=[], pointCloud=null, bounds=null;
+
+async function load(){
+  const data=await (await fetch('./data_3d.json')).json();
+  POINTS=data.points;
+  // Blow the world up so the camera feels tiny inside a dense field (not an
+  // object viewed from outside). Everything downstream uses these scaled coords.
+  const S=18; for(const p of POINTS){p.x*=S;p.y*=S;p.z*=S;}
+  const n=POINTS.length;
+  const pos=new Float32Array(n*3), col=new Float32Array(n*3);
+  const c=new THREE.Color();
+  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+  for(let i=0;i<n;i++){const p=POINTS[i];
+    pos[i*3]=p.x; pos[i*3+1]=p.y; pos[i*3+2]=p.z;
+    // colour by azimuth so different regions read as different hues (spatial cue)
+    const hue=(Math.atan2(p.z,p.x)/(2*Math.PI))+0.5;
+    c.setHSL(hue,0.55,0.6);
+    col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+    minx=Math.min(minx,p.x);maxx=Math.max(maxx,p.x);miny=Math.min(miny,p.y);maxy=Math.max(maxy,p.y);
+  }
+  bounds={minx,maxx,miny,maxy};
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+  const mat=new THREE.PointsMaterial({size:3.4,sizeAttenuation:true,map:disc(),
+    vertexColors:true,transparent:true,alphaTest:0.35,depthWrite:true,fog:true});
+  pointCloud=new THREE.Points(geo,mat);
+  scene.add(pointCloud);
+  $('#count').textContent=n.toLocaleString()+' tracks';
+  drawMinimapBase();
+  const btn=$('#enter'); btn.disabled=false; btn.textContent='Enter ↵';
+}
+
+// ── Free-fly camera (drag-to-look keeps the cursor free for the map/HUD) ────
+let yaw=Math.PI, pitch=0;                 // looking toward origin from +z
+const keys={}, vel=new THREE.Vector3();
+let speedMult=1, flying=null;
+addEventListener('keydown',e=>{keys[e.code]=true;});
+addEventListener('keyup',e=>{keys[e.code]=false;});
+$('#speed').addEventListener('input',e=>{speedMult=+e.target.value;$('#speedval').textContent=speedMult.toFixed(2)+'×';});
+
+let dragging=false,lx=0,ly=0;
+cv.addEventListener('mousedown',e=>{dragging=true;lx=e.clientX;ly=e.clientY;});
+addEventListener('mouseup',()=>dragging=false);
+addEventListener('mousemove',e=>{
+  if(dragging){const dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;
+    yaw-=dx*0.0026; pitch=Math.max(-1.45,Math.min(1.45,pitch-dy*0.0026)); flying=null;}
+  mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1; mouse.px=e.clientX; mouse.py=e.clientY;
+});
+cv.addEventListener('wheel',e=>{e.preventDefault();
+  speedMult=Math.max(0.15,Math.min(5,speedMult*(e.deltaY<0?1.12:0.89)));
+  $('#speed').value=speedMult; $('#speedval').textContent=speedMult.toFixed(2)+'×';
+},{passive:false});
+
+// ── Hover pick ─────────────────────────────────────────────────────────────
+const ray=new THREE.Raycaster(); ray.params.Points.threshold=7;
+const mouse={x:2,y:2,px:0,py:0}; const tip=$('#tip');
+function pick(){
+  if(!pointCloud||dragging){tip.style.opacity=0;return;}
+  ray.setFromCamera(mouse,camera);
+  const hit=ray.intersectObject(pointCloud);
+  if(hit.length){const p=POINTS[hit[0].index];
+    tip.style.opacity=1; tip.style.left=mouse.px+'px'; tip.style.top=mouse.py+'px';
+    tip.innerHTML=`<b>${p.name||''}</b><span>${p.artist||''}</span>`;
+  } else tip.style.opacity=0;
+}
+
+// ── Minimap (top-down x,y of the same space) ───────────────────────────────
+const mm=$('#minimap'), mx=mm.getContext('2d'); let mmBase=null;
+function worldToMap(x,y){const pad=10,w=mm.width-2*pad,h=mm.height-2*pad;
+  return [pad+(x-bounds.minx)/((bounds.maxx-bounds.minx)||1)*w,
+          pad+(1-(y-bounds.miny)/((bounds.maxy-bounds.miny)||1))*h];}
+function mapToWorld(px,py){const pad=10,w=mm.width-2*pad,h=mm.height-2*pad;
+  return [bounds.minx+(px-pad)/w*(bounds.maxx-bounds.minx),
+          bounds.miny+(1-(py-pad)/h)*(bounds.maxy-bounds.miny)];}
+function drawMinimapBase(){const c=document.createElement('canvas');c.width=mm.width;c.height=mm.height;
+  const x=c.getContext('2d');x.fillStyle='#0c0f17';x.fillRect(0,0,c.width,c.height);
+  const col=new THREE.Color();
+  for(const p of POINTS){const[sx,sy]=worldToMap(p.x,p.y);
+    const hue=(Math.atan2(p.z,p.x)/(2*Math.PI))+0.5; col.setHSL(hue,0.55,0.6);
+    x.fillStyle=`rgb(${col.r*255|0},${col.g*255|0},${col.b*255|0})`;x.globalAlpha=.6;
+    x.fillRect(sx,sy,1.3,1.3);}
+  mmBase=c;}
+function drawMinimap(){
+  if(!mmBase)return; mx.clearRect(0,0,mm.width,mm.height); mx.drawImage(mmBase,0,0);
+  const[cx,cy]=worldToMap(camera.position.x,camera.position.y);
+  const d=new THREE.Vector3(); camera.getWorldDirection(d);
+  mx.strokeStyle='#4f8ef7';mx.lineWidth=1.5;mx.beginPath();mx.moveTo(cx,cy);mx.lineTo(cx+d.x*12,cy-d.y*12);mx.stroke();
+  mx.fillStyle='#fff';mx.beginPath();mx.arc(cx,cy,3,0,7);mx.fill();
+}
+mm.addEventListener('click',e=>{const r=mm.getBoundingClientRect();
+  const[wx,wy]=mapToWorld(e.clientX-r.left,e.clientY-r.top);
+  // nearest track to the clicked (x,y), then fly to its 3D position
+  let best=null,bd=1e9;
+  for(const p of POINTS){const dd=(p.x-wx)**2+(p.y-wy)**2; if(dd<bd){bd=dd;best=p;}}
+  if(best) flyTo(new THREE.Vector3(best.x,best.y,best.z));
+});
+
+function flyTo(target){
+  const start=camera.position.clone();
+  const end=target.clone().add(start.clone().sub(target).normalize().multiplyScalar(240));
+  const m=new THREE.Matrix4().lookAt(end,target,new THREE.Vector3(0,1,0));
+  const e=new THREE.Euler().setFromQuaternion(new THREE.Quaternion().setFromRotationMatrix(m),'YXZ');
+  let ty=e.y, tp=e.x;
+  while(ty-yaw>Math.PI)ty-=2*Math.PI; while(ty-yaw<-Math.PI)ty+=2*Math.PI;   // shortest turn
+  flying={start,end,sy:yaw,sp:pitch,ty,tp,t0:performance.now(),dur:1100};
+}
+
+// ── Audio: proximity crossfade of the two nearest previews (Prompt 4) ──────
+let actx=null, master=null, audioOn=false;
+const buffers=new Map();        // index → decoded AudioBuffer (on-demand cache)
+const loadingSet=new Set();     // indices currently fetching/decoding
+const voices=new Map();         // index → {src, gain}  (only the nearest ~2)
+const PRELOAD=6;                // decode the nearest few so handoffs are instant
+const CACHE_MAX=18;             // hard cap on decoded buffers held in memory
+const RAMP=0.08;                // gain ramp seconds (avoids clicks)
+
+function initAudio(){
+  if(actx) return;
+  actx=new (window.AudioContext||window.webkitAudioContext)();
+  master=actx.createGain(); master.gain.value=0.9; master.connect(actx.destination);
+  actx.resume(); audioOn=true;
+}
+async function ensureBuffer(i){
+  if(buffers.has(i)||loadingSet.has(i)) return;
+  const url=POINTS[i] && POINTS[i].preview_url; if(!url) return;
+  loadingSet.add(i);
+  try{
+    const ab=await (await fetch(url)).arrayBuffer();
+    buffers.set(i, await actx.decodeAudioData(ab));
+  }catch(e){ /* unreachable preview — skip */ }
+  loadingSet.delete(i);
+}
+function ramp(gain,target,dur){
+  const t=actx.currentTime; dur=dur||RAMP;
+  gain.cancelScheduledValues(t);
+  gain.setValueAtTime(Math.max(gain.value,1e-4),t);
+  gain.linearRampToValueAtTime(Math.max(target,1e-4),t+dur);
+}
+function startVoice(i){
+  if(voices.has(i)||!buffers.has(i)) return;
+  const src=actx.createBufferSource(); src.buffer=buffers.get(i); src.loop=true;  // seamless 30s loop
+  const g=actx.createGain(); g.gain.value=1e-4;
+  src.connect(g); g.connect(master); src.start();
+  voices.set(i,{src,g});
+}
+function stopVoice(i){
+  const v=voices.get(i); if(!v) return;
+  voices.delete(i);
+  ramp(v.g.gain,1e-4);                                  // fade out, then stop the tail
+  const src=v.src; setTimeout(()=>{try{src.stop();src.disconnect();}catch(e){}}, RAMP*1000+50);
+}
+function evictFar(keep){
+  if(buffers.size<=CACHE_MAX) return;
+  for(const k of [...buffers.keys()]){ if(!keep.has(k)&&!voices.has(k)){ buffers.delete(k);
+    if(buffers.size<=CACHE_MAX) break; } }
+}
+function nearestK(k){                                   // single pass, tiny alloc
+  const cp=camera.position, best=[];
+  for(let i=0;i<POINTS.length;i++){const p=POINTS[i];
+    const dx=p.x-cp.x,dy=p.y-cp.y,dz=p.z-cp.z,d=dx*dx+dy*dy+dz*dz;
+    if(best.length<k){best.push({i,d}); best.sort((a,b)=>a.d-b.d);}
+    else if(d<best[k-1].d){best[k-1]={i,d}; best.sort((a,b)=>a.d-b.d);}}
+  return best;
+}
+let lastAudio=0, current=-1;
+const TRANSITION=0.2;   // crossfade seconds at the boundary between two tracks
+const HYST=5;           // small hysteresis (world units) so you don't flutter on the line
+function setGain(i,target,dur){ const v=voices.get(i); if(v) ramp(v.g.gain,target,dur); }
+function showNowPlaying(i){ const p=POINTS[i]; if(!p) return;
+  $('#np').classList.add('show');
+  $('#np-name').textContent=p.name||''; $('#np-art').textContent=p.artist?'· '+p.artist:''; }
+function scheduleStop(i,delayMs){ const v=voices.get(i); if(!v) return; voices.delete(i);
+  const src=v.src; setTimeout(()=>{try{src.stop();src.disconnect();}catch(e){}},delayMs); }
+
+function updateAudio(){
+  if(!audioOn||!POINTS.length) return;
+  const tnow=performance.now(); if(tnow-lastAudio<60) return; lastAudio=tnow;
+  const near=nearestK(PRELOAD);
+  const keep=new Set(near.map(t=>t.i));
+  for(const t of near) ensureBuffer(t.i);              // load-on-approach
+  evictFar(keep);                                      // unload-on-leave
+  const i1=near[0].i, d1=Math.sqrt(near[0].d);
+  // distance to whatever's currently playing (for the hysteresis band)
+  let dCur=Infinity;
+  if(current>=0){const p=POINTS[current],cp=camera.position;dCur=Math.hypot(p.x-cp.x,p.y-cp.y,p.z-cp.z);}
+  // Only ONE track plays. Switch to the nearest when it's clearly nearest AND its
+  // buffer is decoded (so the current keeps playing — no gap — until ready),
+  // crossfading over TRANSITION.
+  if(i1!==current && buffers.has(i1) && (current<0 || d1<dCur-HYST)){
+    startVoice(i1); setGain(i1,1,TRANSITION);                       // fade newcomer in
+    if(current>=0){ setGain(current,1e-4,TRANSITION); scheduleStop(current,TRANSITION*1000+60); }
+    current=i1; showNowPlaying(i1);
+  } else if(current>=0 && !voices.has(current) && buffers.has(current)){
+    startVoice(current); setGain(current,1,RAMP);                  // re-arm if dropped
+  }
+  for(const [idx] of voices) if(idx!==current) setGain(idx,1e-4,TRANSITION);  // nothing else audible
+}
+
+// ── Loop ───────────────────────────────────────────────────────────────────
+const clock=new THREE.Clock();
+function frame(){
+  requestAnimationFrame(frame);
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(flying){
+    const k=Math.min(1,(performance.now()-flying.t0)/flying.dur);
+    const e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+    camera.position.lerpVectors(flying.start,flying.end,e);
+    yaw=flying.sy+(flying.ty-flying.sy)*e; pitch=flying.sp+(flying.tp-flying.sp)*e;
+    if(k>=1) flying=null;
+  } else {
+    const sp=55*speedMult*(keys['ShiftLeft']||keys['ShiftRight']?3:1)*dt;
+    camera.rotation.set(pitch,yaw,0,'YXZ');
+    const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+    const rgt=new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+    if(keys['KeyW'])vel.addScaledVector(fwd,sp); if(keys['KeyS'])vel.addScaledVector(fwd,-sp);
+    if(keys['KeyD'])vel.addScaledVector(rgt,sp); if(keys['KeyA'])vel.addScaledVector(rgt,-sp);
+    if(keys['KeyE']||keys['Space'])vel.y+=sp;    if(keys['KeyQ'])vel.y-=sp;
+    camera.position.add(vel); vel.multiplyScalar(0.82);            // inertia
+  }
+  camera.rotation.set(pitch,yaw,0,'YXZ');
+  pick(); drawMinimap(); updateAudio();
+  renderer.render(scene,camera);
+}
+
+$('#enter').addEventListener('click',()=>{ initAudio(); $('#gate').classList.add('hidden'); });
+load().then(()=>frame());
+</script>
+</body>
+</html>
