@@ -321,3 +321,23 @@ Four things to get right on a staging service:
 
 When you are happy, merge `crate-chat` into `main` and delete the staging
 service — the live service picks the change up on its next deploy.
+
+### If the key is an organisation-level one
+
+Anthropic keys created at the organisation level are not bound to a workspace,
+and the API rejects the request:
+
+    400 invalid_request_error — This API key is not scoped to a workspace, so
+    this request must include the anthropic-workspace-id header
+
+Two ways out, and the first is better:
+
+1. **Create a workspace-scoped key** in the Anthropic Console (open the
+   workspace, then create the key inside it) and use that. Nothing else to set,
+   and it keeps this project's spend attributable to one workspace.
+2. Keep the org-level key and set `ANTHROPIC_WORKSPACE_ID` (or
+   `LLM_WORKSPACE_ID`) to the workspace ID. The backend then sends the
+   `anthropic-workspace-id` header on every call.
+
+`/api/chat/config` reports `workspace_id_set`, so you can tell which path is
+in effect without reading logs.

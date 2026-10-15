@@ -46,6 +46,12 @@ BACKEND = os.environ.get("LLM_BACKEND", "anthropic").strip().lower()
 MODEL = os.environ.get("LLM_MODEL", "").strip()
 BASE_URL = os.environ.get("LLM_BASE_URL", "").strip().rstrip("/")
 API_KEY = os.environ.get("LLM_API_KEY", "").strip()
+# Anthropic keys created at the organisation level are not bound to a workspace,
+# and the API then rejects the request unless it carries an
+# anthropic-workspace-id header. Setting this makes such a key usable; a
+# workspace-scoped key needs nothing.
+WORKSPACE_ID = (os.environ.get("ANTHROPIC_WORKSPACE_ID")
+                or os.environ.get("LLM_WORKSPACE_ID") or "").strip()
 TIMEOUT = int(os.environ.get("LLM_TIMEOUT", 120))
 MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", 1200))
 TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", 0.4))
@@ -135,6 +141,8 @@ class AnthropicBackend(object):
             kw = {}
             if API_KEY:
                 kw["api_key"] = API_KEY
+            if WORKSPACE_ID:
+                kw["default_headers"] = {"anthropic-workspace-id": WORKSPACE_ID}
             self._client = anthropic.Anthropic(**kw)
         return self._client
 
@@ -318,7 +326,7 @@ def describe():
     if b in ("anthropic", "claude"):
         ok = bool(API_KEY or os.environ.get("ANTHROPIC_API_KEY"))
         out = {"backend": "anthropic", "model": MODEL or DEFAULT_MODEL["anthropic"],
-               "configured": ok}
+               "configured": ok, "workspace_id_set": bool(WORKSPACE_ID)}
         if not ok:
             out["reason"] = ("LLM_BACKEND is 'anthropic' but neither "
                              "ANTHROPIC_API_KEY nor LLM_API_KEY is set on this "

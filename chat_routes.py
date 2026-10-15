@@ -170,6 +170,7 @@ def chat_config():
         "model": info.get("model"),
         "base_url": info.get("base_url"),
         "reason": info.get("reason"),
+        "workspace_id_set": info.get("workspace_id_set"),
     })
 
 
