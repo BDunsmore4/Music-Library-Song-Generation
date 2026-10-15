@@ -341,3 +341,45 @@ Two ways out, and the first is better:
 
 `/api/chat/config` reports `workspace_id_set`, so you can tell which path is
 in effect without reading logs.
+
+## 10. The stage (Frontend/stage.html)
+
+Two acts in one page. It opens as an ordinary warm-toned chat with nothing to
+suggest there is anything else there. Type the codeword and the assistant says
+"Enjoy the show": the house lights go down, drapes close across the black, and
+withdraw to reveal the 3-D library with the input risen to the top like
+surtitles above a proscenium. From then on each prompt plays as five beats.
+
+| Beat | Driven by | What you see |
+|---|---|---|
+| utterance | the typed text | it becomes the surtitle |
+| structuring | `structuring` event | the sound descriptions the model wrote |
+| landing | `tracks.position` | a pulsing marker; the camera eases to it |
+| correction | `correction` event | an arc from the last position, labelled `+groove` |
+| illumination | `tracks[].relevance` | those points ignite; the billing rises |
+
+The codeword is `CODEWORD` near the top of the `<script>`. **It is in client
+source, so it is a surprise rather than a secret** — check it server-side if it
+has to be unguessable.
+
+`crate.html` is untouched and still the plain version; keep it if you want a
+demo with no theatre in it.
+
+### What the stage needs from the backend
+
+- `POST /api/chat/stream` — SSE, one event per beat. Streamed rather than
+  returned at the end so the animation runs *while* the model works: the
+  several seconds of latency become the performance instead of a spinner.
+- `tracks[].relevance` — 0–1, normalised within the turn. Brightness, not a
+  score: an absolute cosine of 0.31 misleads, a relative intensity does not.
+  The wildcard lands near 0.15 and visibly burns cooler and dimmer.
+- `tracks[].x3/y3/z3` and `position` from `data/map_coords_3d.json`.
+- `steps[]` on the non-streaming `/api/chat` too, for anything that wants the
+  mechanism without the theatre.
+
+`position` is the **relevance-weighted centroid of the tracks returned**, not a
+projection of the query vector. A 512→3 linear fit would be dishonest (UMAP is
+far too non-linear) and `umap.transform` costs seconds, which would wreck the
+choreography. This is exact, free, and always consistent with what lights up —
+but it is a visualisation, not a claim about where the request "really" sits in
+512 dimensions. Worth keeping that distinction if you ever narrate it.

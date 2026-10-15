@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crate</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ──────────────────────────────────────────────────────────────────────────
+   Two acts in one page.
+
+   FOYER  a warm, ordinary chat. Nothing suggests there is anything else here.
+   STAGE  the curtain withdraws and you are inside the 3-D library, with the
+          input risen to the top like surtitles above a proscenium.
+
+   The palette shift carries the transition: the foyer is paper-warm and lit,
+   the stage is near-black. Going from one to the other IS the house lights
+   going down, so the two colour schemes are deliberately not reconciled.
+   ────────────────────────────────────────────────────────────────────────── */
+:root{
+  /* foyer — warm neutral, a shade warmer than the usual assistant greys */
+  --paper:#faf8f4;  --paper-2:#f3efe8;  --ink:#2a2724;  --ink-2:#6b645c;
+  --faint:#b8b0a5;  --rule:#e7e1d7;     --clay:#b5603f;
+  /* stage */
+  --night:#07090d;  --glow:#ffd9a0;     --cool:#7fa8d8;
+  --surt:#f0e6d8;
+  --ease:cubic-bezier(.16,.84,.26,1);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--paper); color:var(--ink);
+  font:400 15px/1.6 'Inter',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased; overflow:hidden;
+}
+
+/* ── the blackout veil: house lights ────────────────────────────────────── */
+#veil{
+  position:fixed; inset:0; background:#000; opacity:0; pointer-events:none;
+  z-index:60; transition:opacity 1.5s ease;
+}
+body.dimming #veil{opacity:1}
+body.staged   #veil{opacity:0; transition:opacity 2.6s ease 0.1s}
+
+/* ── FOYER ──────────────────────────────────────────────────────────────── */
+#foyer{
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  transition:opacity .8s ease;
+}
+body.staged #foyer{opacity:0; pointer-events:none}
+
+#foyer header{
+  flex:0 0 auto; padding:18px 22px; display:flex; align-items:baseline; gap:12px;
+}
+#foyer header h1{
+  margin:0; font:400 21px/1 'Instrument Serif',Georgia,serif; letter-spacing:.01em;
+}
+#foyer header .sub{color:var(--ink-2); font-size:12.5px}
+#foyer main{flex:1 1 auto; overflow-y:auto; padding:8px 22px 20px}
+.thread{max-width:640px; margin:0 auto; display:flex; flex-direction:column; gap:22px}
+
+.turn{display:flex}
+.turn.me{justify-content:flex-end}
+.turn.me .bubble{
+  background:var(--paper-2); border:1px solid var(--rule);
+  border-radius:14px 14px 4px 14px; padding:9px 13px; max-width:76%;
+}
+.turn.bot .bubble{max-width:100%; white-space:pre-wrap}
+.hint{color:var(--ink-2); font-size:13px}
+
+/* track list in the foyer */
+.list{display:flex; flex-direction:column; margin-top:4px}
+.row{display:flex; align-items:center; gap:11px; padding:7px 9px; border-radius:8px}
+.row:hover{background:var(--paper-2)}
+.row.wild{box-shadow:inset 2px 0 0 var(--clay)}
+.pl{
+  flex:0 0 auto; width:25px; height:25px; border-radius:50%; cursor:pointer; padding:0;
+  border:1px solid var(--rule); background:#fff; color:var(--ink); font-size:9px;
+}
+.pl:hover{border-color:var(--clay); color:var(--clay)}
+.pl.on{background:var(--clay); border-color:var(--clay); color:#fff}
+.pl[disabled]{opacity:.35; cursor:default}
+.tx{min-width:0; flex:1 1 auto}
+.tt{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px}
+.ta{color:var(--ink-2); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.wtag{flex:0 0 auto; color:var(--clay); font-size:9.5px; letter-spacing:.07em; text-transform:uppercase}
+.vt{flex:0 0 auto; display:flex; gap:3px; opacity:0; transition:opacity .15s}
+.row:hover .vt,.vt.set{opacity:1}
+.vt button{width:23px;height:23px;padding:0;cursor:pointer;font-size:10px;background:none;
+  border:1px solid var(--rule); border-radius:5px; color:var(--faint)}
+.vt button.on{color:#fff; background:var(--clay); border-color:var(--clay)}
+
+/* ── the composer: becomes the surtitle bar ─────────────────────────────── */
+#bar{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:26px; width:min(680px,calc(100% - 36px)); z-index:40;
+  transition:bottom 1.5s var(--ease), top 1.5s var(--ease),
+             width 1.5s var(--ease), transform 1.5s var(--ease);
+}
+body.staged #bar{bottom:auto; top:18px; width:min(760px,calc(100% - 28px))}
+#bar .wrap{
+  display:flex; gap:9px; align-items:flex-end;
+  background:#fff; border:1px solid var(--rule); border-radius:14px;
+  padding:9px 9px 9px 14px; box-shadow:0 2px 14px rgba(42,39,36,.06);
+  transition:background 1.2s ease, border-color 1.2s ease, box-shadow 1.2s ease;
+}
+body.staged #bar .wrap{
+  background:rgba(8,10,14,.62); border-color:rgba(240,230,216,.16);
+  box-shadow:0 10px 50px rgba(0,0,0,.6); backdrop-filter:blur(7px);
+}
+#q{
+  flex:1 1 auto; border:0; outline:0; resize:none; background:none; font:inherit;
+  color:var(--ink); max-height:120px; min-height:24px; padding:3px 0;
+  transition:color 1.2s ease;
+}
+body.staged #q{color:var(--surt); text-align:center; font-size:16px}
+#q::placeholder{color:var(--faint)}
+body.staged #q::placeholder{color:rgba(240,230,216,.4)}
+#go{
+  flex:0 0 auto; width:30px; height:30px; border-radius:9px; cursor:pointer; padding:0;
+  border:0; background:var(--ink); color:#fff; font-size:13px;
+  transition:background 1.2s ease, opacity .2s;
+}
+body.staged #go{background:rgba(240,230,216,.14); color:var(--surt)}
+#go[disabled]{opacity:.4; cursor:default}
+
+/* ── STAGE ──────────────────────────────────────────────────────────────── */
+#stage{position:fixed; inset:0; background:var(--night); opacity:0;
+  pointer-events:none; z-index:10; transition:opacity 1.6s ease}
+body.staged #stage{opacity:1; pointer-events:auto}
+#sky{width:100%; height:100%; display:block}
+
+/* curtains: two drapes that withdraw to the wings */
+.drape{
+  position:fixed; top:0; bottom:0; width:52%; z-index:30; pointer-events:none;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(0,0,0,.42) 0 7px, rgba(255,255,255,.05) 7px 15px, rgba(0,0,0,.42) 15px 22px),
+    linear-gradient(90deg,#4a1016,#7d1f26 42%,#5c141b 72%,#36090e);
+  box-shadow:0 0 70px rgba(0,0,0,.65) inset;
+  transition:transform 3.1s var(--ease);
+}
+#dl{left:0;  transform:translateX(-101%)}
+#dr{right:0; transform:translateX(101%)}
+body.dimming #dl,body.dimming #dr{transform:translateX(0)}
+body.staged  #dl{transform:translateX(-101%)}
+body.staged  #dr{transform:translateX(101%)}
+
+/* surtitle line, under the bar */
+#surt{
+  position:fixed; top:74px; left:50%; transform:translateX(-50%);
+  width:min(820px,calc(100% - 32px)); z-index:35; text-align:center;
+  color:var(--surt); font-size:13.5px; letter-spacing:.015em; pointer-events:none;
+  opacity:0; transition:opacity .5s ease;
+}
+#surt.show{opacity:1}
+#surt .ph{color:rgba(240,230,216,.55); font-style:italic;
+  font-family:'Instrument Serif',Georgia,serif; font-size:16px}
+#surt .ax{color:var(--glow); font-variant-numeric:tabular-nums}
+
+/* the lit tracks, listed quietly at the foot of the stage */
+#bill{
+  position:fixed; left:50%; transform:translateX(-50%); bottom:20px; z-index:35;
+  width:min(760px,calc(100% - 28px)); display:flex; flex-direction:column; gap:1px;
+  opacity:0; transition:opacity .7s ease; pointer-events:none;
+}
+#bill.show{opacity:1; pointer-events:auto}
+.bl{
+  display:flex; align-items:center; gap:10px; padding:7px 11px; border-radius:8px;
+  background:rgba(8,10,14,.5); border:1px solid rgba(240,230,216,.07);
+  backdrop-filter:blur(5px); color:var(--surt);
+}
+.bl .bn{flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; font-size:13.5px}
+.bl .ba{color:rgba(240,230,216,.5)}
+.bl .bp{flex:0 0 auto; width:23px; height:23px; border-radius:50%; cursor:pointer;
+  padding:0; border:1px solid rgba(240,230,216,.2); background:none;
+  color:var(--surt); font-size:9px}
+.bl .bp.on{background:var(--glow); border-color:var(--glow); color:#1a1205}
+.bl.wild{border-color:rgba(255,217,160,.3)}
+.bl .bw{color:var(--glow); font-size:9px; letter-spacing:.07em; text-transform:uppercase}
+.bl .bv{flex:0 0 auto; display:flex; gap:3px}
+.bl .bv button{width:22px;height:22px;padding:0;cursor:pointer;font-size:10px;
+  background:none;border:1px solid rgba(240,230,216,.18);border-radius:5px;
+  color:rgba(240,230,216,.55)}
+.bl .bv button.on{color:#1a1205;background:var(--glow);border-color:var(--glow)}
+
+#exit{
+  position:fixed; right:16px; top:18px; z-index:45; font-size:11.5px;
+  color:rgba(240,230,216,.42); cursor:pointer; opacity:0; transition:opacity .6s ease;
+  background:none; border:0; font-family:inherit;
+}
+body.staged #exit{opacity:1}
+#exit:hover{color:var(--surt)}
+.err{color:var(--clay); font-size:13px}
+@media (max-width:620px){
+  #foyer main{padding:6px 14px 18px}
+  .vt{opacity:1}
+  #bill{bottom:12px}
+  #surt{top:70px; font-size:12.5px}
+}
+</style>
+</head>
+<body>
+
+<div id="stage"><canvas id="sky"></canvas></div>
+<div class="drape" id="dl"></div>
+<div class="drape" id="dr"></div>
+<div id="veil"></div>
+
+<div id="foyer">
+  <header>
+    <h1>Crate</h1>
+    <span class="sub" id="sub">7,106 tracks</span>
+  </header>
+  <main id="scrollable"><div class="thread" id="thread"></div></main>
+</div>
+
+<div id="surt"></div>
+<div id="bill"></div>
+<button id="exit">leave the stage</button>
+
+<div id="bar"><div class="wrap">
+  <textarea id="q" rows="1" placeholder="What do you feel like?"></textarea>
+  <button id="go">↑</button>
+</div></div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ── config ─────────────────────────────────────────────────────────────── */
+const API_DEFAULT = "https://music-library-song-generation-production.up.railway.app";
+function resolveApi(){
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+    return "http://localhost:8765";
+  const w = new URLSearchParams(location.search).get("api");
+  if (w) { try { const u = new URL(w);
+    if (u.protocol === "https:" && u.hostname.endsWith(".railway.app")) return u.origin;
+  } catch(e){} }
+  return API_DEFAULT;
+}
+const API = resolveApi();
+const CHAT_KEY = "";
+
+// The codeword. NOTE: this lives in client source, so anyone reading the page
+// can find it. It is a surprise, not a secret — if it must be unguessable,
+// check it server-side.
+const CODEWORD = "take me to the opera";
+
+/* ── dom ────────────────────────────────────────────────────────────────── */
+const thread = document.getElementById("thread");
+const q = document.getElementById("q"), go = document.getElementById("go");
+const surt = document.getElementById("surt"), bill = document.getElementById("bill");
+const sub = document.getElementById("sub");
+const H = () => CHAT_KEY ? {"Content-Type":"application/json","X-Chat-Key":CHAT_KEY}
+                         : {"Content-Type":"application/json"};
+let session = null, busy = false, staged = false, audio = null, playing = null;
+
+const el = (t,c,x) => { const n=document.createElement(t);
+  if(c)n.className=c; if(x!==undefined)n.textContent=x; return n; };
+const scrollDown = () => { const m=document.getElementById("scrollable");
+  m.scrollTop = m.scrollHeight; };
+
+function bubble(who, text){
+  const r = el("div","turn "+who), b = el("div","bubble",text);
+  r.appendChild(b); thread.appendChild(r); scrollDown(); return b;
+}
+
+/* ── previews, one at a time ────────────────────────────────────────────── */
+function preview(url, btn){
+  if (playing === btn){ audio.pause(); return; }
+  if (audio) audio.pause();
+  audio = new Audio(url);
+  audio.play().catch(()=>{ btn.textContent="—"; btn.disabled=true; });
+  if (playing){ playing.classList.remove("on"); playing.textContent="▶"; }
+  playing = btn; btn.classList.add("on"); btn.textContent="❙❙";
+  audio.onended = audio.onpause = () => {
+    btn.classList.remove("on"); btn.textContent="▶";
+    if (playing===btn) playing=null;
+  };
+}
+function vote(id, rating, group, hit){
+  group.querySelectorAll("button").forEach(b=>b.classList.remove("on"));
+  hit.classList.add("on"); group.classList.add("set");
+  fetch(API+"/api/chat/feedback",{method:"POST",headers:H(),
+    body:JSON.stringify({session,track_id:id,rating,source:"ui"})}).catch(()=>{});
+}
+
+/* ── foyer track list ───────────────────────────────────────────────────── */
+function foyerTracks(tracks){
+  if(!tracks||!tracks.length) return;
+  const wrap = el("div","list");
+  tracks.forEach(t=>{
+    const row = el("div","row"+(t.wildcard?" wild":""));
+    const p = el("button","pl", t.preview_url?"▶":"—");
+    if(!t.preview_url) p.disabled=true; else p.onclick=()=>preview(t.preview_url,p);
+    row.appendChild(p);
+    const tx = el("div","tx");
+    tx.appendChild(el("div","tt",t.name)); tx.appendChild(el("div","ta",t.artist));
+    row.appendChild(tx);
+    if(t.wildcard) row.appendChild(el("span","wtag","further out"));
+    const g = el("div","vt"), up=el("button",null,"▲"), dn=el("button",null,"▼");
+    up.onclick=()=>vote(t.track_id,1,g,up); dn.onclick=()=>vote(t.track_id,0,g,dn);
+    g.appendChild(up); g.appendChild(dn); row.appendChild(g);
+    wrap.appendChild(row);
+  });
+  const r = el("div","turn bot"); r.appendChild(wrap);
+  thread.appendChild(r); scrollDown();
+}
+
+/* ── stage: the point field ─────────────────────────────────────────────── */
+const S = 18;
+let renderer, scene, camera, field, lit, marker, arc, raf;
+let P = [], byId = new Map();
+let camTarget = new THREE.Vector3(), camWant = new THREE.Vector3();
+let orbit = {a:0.6, e:0.22, r:260, want:260}, drag=null, t0=performance.now();
+
+function disc(){
+  const c=document.createElement("canvas"); c.width=c.height=64;
+  const g=c.getContext("2d"), rad=g.createRadialGradient(32,32,0,32,32,32);
+  rad.addColorStop(0,"rgba(255,255,255,1)"); rad.addColorStop(.45,"rgba(255,255,255,.5)");
+  rad.addColorStop(1,"rgba(255,255,255,0)");
+  g.fillStyle=rad; g.beginPath(); g.arc(32,32,32,0,7); g.fill();
+  const t=new THREE.CanvasTexture(c); return t;
+}
+
+async function buildStage(){
+  if (scene){ if(!raf) tick(); return; }   // re-entry: just restart the loop
+  const d = await (await fetch("./data_3d.json")).json();
+  P = d.points;
+  for (const p of P){ p.x*=S; p.y*=S; p.z*=S; byId.set(String(p.id), p); }
+
+  const cv = document.getElementById("sky");
+  renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x07090d);
+  scene.fog = new THREE.FogExp2(0x07090d, 0.0019);
+  camera = new THREE.PerspectiveCamera(62,1,0.1,9000);
+
+  // The field is deliberately dim and almost colourless: the stage is unlit
+  // until a query puts a light on part of it. Hue still drifts with azimuth so
+  // regions remain tellable apart.
+  const n=P.length, pos=new Float32Array(n*3), col=new Float32Array(n*3);
+  const c=new THREE.Color();
+  for(let i=0;i<n;i++){ const p=P[i];
+    pos[i*3]=p.x; pos[i*3+1]=p.y; pos[i*3+2]=p.z;
+    c.setHSL((Math.atan2(p.z,p.x)/(2*Math.PI))+0.5, 0.22, 0.19);
+    col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+  geo.setAttribute("color",new THREE.BufferAttribute(col,3));
+  field = new THREE.Points(geo,new THREE.PointsMaterial({
+    size:2.5,sizeAttenuation:true,map:disc(),vertexColors:true,
+    transparent:true,depthWrite:false,fog:true,blending:THREE.AdditiveBlending}));
+  scene.add(field);
+
+  // A second, separate cloud for whatever is currently lit, so highlights can
+  // be larger and additively bright without a custom shader on 7,106 points.
+  const lgeo=new THREE.BufferGeometry();
+  lgeo.setAttribute("position",new THREE.BufferAttribute(new Float32Array(32*3),3));
+  lgeo.setAttribute("color",new THREE.BufferAttribute(new Float32Array(32*3),3));
+  lgeo.setDrawRange(0,0);
+  lit = new THREE.Points(lgeo,new THREE.PointsMaterial({
+    size:13,sizeAttenuation:true,map:disc(),vertexColors:true,
+    transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
+  lit.userData.want = 0;
+  scene.add(lit);
+
+  marker = new THREE.Mesh(new THREE.SphereGeometry(1.7,16,16),
+    new THREE.MeshBasicMaterial({color:0xffd9a0,transparent:true,opacity:0}));
+  scene.add(marker);
+
+  arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(),new THREE.Vector3()]),
+    new THREE.LineBasicMaterial({color:0xffd9a0,transparent:true,opacity:0}));
+  scene.add(arc);
+
+  addEventListener("resize",fit); fit();
+  cv.addEventListener("pointerdown",e=>drag={x:e.clientX,y:e.clientY});
+  addEventListener("pointerup",()=>drag=null);
+  addEventListener("pointermove",e=>{
+    if(!drag) return;
+    orbit.a -= (e.clientX-drag.x)*0.004;
+    orbit.e = Math.max(-1.3,Math.min(1.3,orbit.e+(e.clientY-drag.y)*0.003));
+    drag={x:e.clientX,y:e.clientY};
+  });
+  cv.addEventListener("wheel",e=>{
+    e.preventDefault(); orbit.want=Math.max(70,Math.min(900,orbit.want*(1+e.deltaY*0.0012)));
+  },{passive:false});
+  tick();
+}
+function fit(){
+  if(!renderer) return;
+  const w=innerWidth,h=innerHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+function tick(){
+  raf = requestAnimationFrame(tick);
+  const t=(performance.now()-t0)/1000;
+  orbit.r += (orbit.want-orbit.r)*0.06;
+  if(!drag) orbit.a += 0.00042;            // a slow drift, so the stage breathes
+  camTarget.lerp(camWant,0.022);
+  camera.position.set(
+    camTarget.x + orbit.r*Math.cos(orbit.e)*Math.cos(orbit.a),
+    camTarget.y + orbit.r*Math.sin(orbit.e),
+    camTarget.z + orbit.r*Math.cos(orbit.e)*Math.sin(orbit.a));
+  camera.lookAt(camTarget);
+  if(marker.material.opacity>0){
+    marker.scale.setScalar(1+0.3*(0.55+0.45*Math.sin(t*3.1)));
+  }
+  // the gesture fades once it has been read, so arcs do not accumulate
+  if(arc.material.opacity>0) arc.material.opacity=Math.max(0,arc.material.opacity-0.0035);
+  if(lit.material.opacity<lit.userData.want) lit.material.opacity+=0.035;
+  renderer.render(scene,camera);
+}
+
+function lookAt(pos){
+  if(!pos) return;
+  camWant.set(pos[0]*S,pos[1]*S,pos[2]*S);
+  orbit.want = 150;
+}
+function placeMarker(pos){
+  if(!pos) return;
+  marker.position.set(pos[0]*S,pos[1]*S,pos[2]*S);
+  marker.material.opacity = 0.95;
+}
+function drawArc(from,to){
+  if(!from||!to) return;
+  const a=new THREE.Vector3(from[0]*S,from[1]*S,from[2]*S);
+  const b=new THREE.Vector3(to[0]*S,to[1]*S,to[2]*S);
+  const mid=a.clone().lerp(b,0.5);
+  mid.y += a.distanceTo(b)*0.22;           // lift it so the move reads as a gesture
+  const curve=new THREE.QuadraticBezierCurve3(a,mid,b);
+  arc.geometry.dispose();
+  arc.geometry=new THREE.BufferGeometry().setFromPoints(curve.getPoints(48));
+  arc.material.opacity=0.75;
+}
+function lightTracks(tracks){
+  const pts=[], cols=[], c=new THREE.Color();
+  tracks.forEach(t=>{
+    const p = byId.get(String(t.track_id));
+    if(!p) return;
+    pts.push(p.x,p.y,p.z);
+    // wildcard burns cooler so it is distinguishable from the matches
+    c.set(t.wildcard ? 0x9fc4ef : 0xffd9a0);
+    const g = 0.35 + 0.65*(t.relevance ?? 1);
+    cols.push(c.r*g, c.g*g, c.b*g);
+  });
+  const n = pts.length/3;
+  const pa = lit.geometry.getAttribute("position"), ca = lit.geometry.getAttribute("color");
+  for(let i=0;i<Math.min(n,32)*3;i++){ pa.array[i]=pts[i]; ca.array[i]=cols[i]; }
+  pa.needsUpdate=true; ca.needsUpdate=true;
+  lit.geometry.setDrawRange(0,Math.min(n,32));
+  lit.material.opacity=0; lit.userData.want=1;
+}
+
+/* ── surtitles ──────────────────────────────────────────────────────────── */
+let surtTimer=null;
+function say(html, hold){
+  surt.innerHTML = html; surt.classList.add("show");
+  clearTimeout(surtTimer);
+  if(hold) surtTimer=setTimeout(()=>surt.classList.remove("show"),hold);
+}
+const esc = s => String(s??"").replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]));
+
+/* ── the billing at the foot of the stage ───────────────────────────────── */
+function showBill(tracks){
+  bill.innerHTML="";
+  tracks.forEach(t=>{
+    const r=el("div","bl"+(t.wildcard?" wild":""));
+    const p=el("button","bp",t.preview_url?"▶":"—");
+    if(!t.preview_url) p.disabled=true; else p.onclick=()=>preview(t.preview_url,p);
+    r.appendChild(p);
+    const n=el("div","bn"); n.appendChild(document.createTextNode(t.name+" "));
+    const a=el("span","ba","· "+t.artist); n.appendChild(a); r.appendChild(n);
+    if(t.wildcard) r.appendChild(el("span","bw","further out"));
+    const g=el("div","bv"), up=el("button",null,"▲"), dn=el("button",null,"▼");
+    up.onclick=()=>vote(t.track_id,1,g,up); dn.onclick=()=>vote(t.track_id,0,g,dn);
+    g.appendChild(up); g.appendChild(dn); r.appendChild(g);
+    bill.appendChild(r);
+  });
+  bill.classList.add("show");
+}
+
+/* ── the transition ─────────────────────────────────────────────────────── */
+const wait = ms => new Promise(r=>setTimeout(r,ms));
+
+async function raiseCurtain(){
+  staged = true;
+  go.disabled = true;
+  await wait(900);                       // let "enjoy the show" land
+  document.body.classList.add("dimming");  // lights down, drapes close in
+  const ready = buildStage();            // build behind the black
+  await wait(2600);
+  await ready;
+  document.body.classList.add("staged");   // drapes withdraw, stage revealed
+  q.placeholder = "…";
+  await wait(1500);
+  say("<span class='ph'>the floor is yours</span>", 4200);
+  go.disabled = false;
+  q.focus();
+}
+document.getElementById("exit").onclick = () => {
+  document.body.classList.remove("staged","dimming");
+  staged=false; bill.classList.remove("show"); surt.classList.remove("show");
+  q.placeholder="What do you feel like?";
+  if(raf) cancelAnimationFrame(raf), raf=null;
+};
+
+/* ── talking ────────────────────────────────────────────────────────────── */
+async function boot(){
+  try{
+    const r = await fetch(API+"/api/chat/config",{headers:H()});
+    const c = await r.json();
+    if(!r.ok) throw new Error(c.error||r.status);
+    sub.textContent = c.tracks.toLocaleString()+" tracks";
+    if(!c.live){
+      sub.textContent += " · offline";
+      go.disabled=true; q.disabled=true;
+      bubble("bot","I can't chat just now — the server has no model configured."
+        + (c.reason? "\n\n"+c.reason+"." : ""));
+      return;
+    }
+    const s = await fetch(API+"/api/chat/session",{method:"POST",headers:H()});
+    session = (await s.json()).session;
+    bubble("bot","Tell me what you're after — a mood, a setting, or how you want it "
+      + "to sound. I'll find three from the library, and one from further out.");
+  }catch(e){
+    sub.textContent="offline"; go.disabled=true;
+    bubble("bot","").appendChild(el("div","err","Can't reach the server ("+e.message+")."));
+  }
+}
+
+let lastPos = null;
+
+async function send(){
+  const text = q.value.trim();
+  if(!text || busy) return;
+
+  // the codeword, checked before anything is sent anywhere
+  if(!staged && text.toLowerCase() === CODEWORD.toLowerCase()){
+    q.value=""; q.style.height="auto";
+    bubble("me",text);
+    bubble("bot","Enjoy the show.");
+    raiseCurtain();
+    return;
+  }
+
+  busy=true; go.disabled=true;
+  q.value=""; q.style.height="auto";
+  if(!staged) bubble("me",text);
+  else say("<span class='ph'>"+esc(text)+"</span>");
+
+  let dots=null;
+  if(!staged) dots=bubble("bot","…");
+
+  try{
+    const r = await fetch(API+"/api/chat/stream",{method:"POST",headers:H(),
+      body:JSON.stringify({session,message:text})});
+    if(!r.ok || !r.body){
+      const d = await r.json().catch(()=>({}));
+      throw new Error(d.error || ("server "+r.status));
+    }
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    let buf="", reply="";
+    while(true){
+      const {value,done} = await rd.read();
+      if(done) break;
+      buf += dec.decode(value,{stream:true});
+      const parts = buf.split("\n\n"); buf = parts.pop();
+      for(const part of parts){
+        const line = part.split("\n").find(l=>l.startsWith("data: "));
+        if(!line) continue;
+        let ev; try{ ev=JSON.parse(line.slice(6)); }catch(e){ continue; }
+        await beat(ev);
+        if(ev.type==="reply") reply += ev.text||"";
+      }
+    }
+    if(dots) dots.textContent = reply || "(no reply)";
+    else if(reply) say(esc(reply), 7000);
+  }catch(e){
+    if(dots){ dots.textContent=""; dots.appendChild(el("div","err",e.message)); }
+    else say("<span class='err'>"+esc(e.message)+"</span>", 6000);
+  }finally{
+    busy=false; go.disabled=false;
+  }
+}
+
+/* one beat of the mechanism */
+async function beat(ev){
+  switch(ev.type){
+    case "session":
+      session = ev.session; break;
+
+    case "structuring":
+      if(staged){
+        say("<span class='ph'>listening for</span><br>"
+          + ev.descriptions.map(d=>"“"+esc(d)+"”").join("<br>"));
+        await wait(1400);
+      }
+      break;
+
+    case "reference":
+      if(staged){
+        const who = (ev.artists||[ev.track]).filter(Boolean).map(esc).join(" · ");
+        say("<span class='ph'>taking a bearing from</span> "+who);
+        await wait(1100);
+      }
+      break;
+
+    case "correction":
+      if(staged){
+        const ax = (ev.axes||[]).map(a=>
+          "<span class='ax'>"+(a.sign||"+")+" "+esc(a.axis)+"</span>").join("  ");
+        say("<span class='ph'>adjusting</span> "+(ax||"on your feedback"));
+        await wait(1100);
+      }
+      break;
+
+    case "tracks": {
+      const ts = ev.results||[];
+      if(staged){
+        if(lastPos && ev.position) drawArc(lastPos, ev.position);
+        placeMarker(ev.position); lookAt(ev.position);
+        lightTracks(ts);
+        await wait(900);
+        showBill(ts);
+      } else {
+        foyerTracks(ts);
+      }
+      if(ev.position) lastPos = ev.position;
+      break;
+    }
+
+    case "error":
+      if(!ev.recoverable){
+        if(staged) say("<span class='err'>"+esc(ev.message)+"</span>",6000);
+        else bubble("bot","").appendChild(el("div","err",ev.message));
+      }
+      break;
+  }
+}
+
+go.onclick = send;
+q.addEventListener("keydown",e=>{
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+});
+q.addEventListener("input",()=>{
+  q.style.height="auto"; q.style.height=Math.min(q.scrollHeight,120)+"px";
+});
+boot();
+</script>
+</body>
+</html>

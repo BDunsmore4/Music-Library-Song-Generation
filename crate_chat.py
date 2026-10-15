@@ -298,6 +298,10 @@ class CrateChat(object):
         # are not matching and you are paying full price every call.
         self.usage = {"calls": 0, "input": 0, "output": 0,
                       "cache_write": 0, "cache_read": 0}
+        # What the model did this turn, in order, for the stage to animate:
+        # the descriptions it wrote, the artists it resolved, the axes it moved.
+        # Already computed internally; this just keeps it instead of discarding it.
+        self.steps = []
         self._client = None
 
     def system_prompt(self):
@@ -312,6 +316,7 @@ class CrateChat(object):
             out = self._call_tool(name, args, s, c, k)
             if out.get("results"):
                 self.last_results = c.last_results
+            self.steps.append(self._step(name, args, out))
             return out
         except Exception as e:
             return dict(error="%s: %s" % (type(e).__name__, e))
@@ -376,6 +381,7 @@ class CrateChat(object):
         rather than returning a contentless reply.
         """
         backend = self._backend()
+        self.steps = []
         self.messages.append(llm.user(user_text))
         opening = not self._searched
 
@@ -415,6 +421,37 @@ class CrateChat(object):
 
         return "(stopped: too many tool turns)"
 
+    @staticmethod
+    def _step(name, args, out):
+        """One beat of the mechanism, in the vocabulary the animation needs."""
+        st = {"tool": name, "results": [r["track_id"] for r in out.get("results", [])]}
+        if name == "search_by_description":
+            st["kind"] = "structuring"
+            st["descriptions"] = args.get("descriptions") or []
+        elif name in ("add_artists", "search_by_artist"):
+            st["kind"] = "reference"
+            st["artists"] = ([a.get("name") for a in out.get("artists", [])]
+                             or [args.get("artist")])
+            st["seeded_from"] = out.get("seeded_from") or (
+                (out.get("artists") or [{}])[0].get("source"))
+            st["seed_tracks"] = [t for a in (out.get("artists") or [])
+                                 for t in (a.get("seed_tracks") or [])]
+        elif name == "search_by_track":
+            st["kind"] = "reference"
+            st["resolved"] = (out.get("resolved") or {}).get("name")
+        elif name == "refine":
+            st["kind"] = "correction"
+            ap = out.get("applied") or {}
+            st["axes"] = ap.get("axes") or []
+            st["kept"] = ap.get("kept", 0)
+            st["rejected"] = ap.get("rejected", 0)
+            st["drift_capped"] = bool(ap.get("drift_capped"))
+        if out.get("fit"):
+            st["fit"] = out["fit"].get("verdict")
+        if out.get("error"):
+            st["error"] = out["error"]
+        return st
+
     def _account(self, reply):
         self.usage["calls"] += 1
         for k in ("input", "output", "cache_write", "cache_read"):
@@ -431,6 +468,78 @@ class CrateChat(object):
                 "(%.0f%% of input served from cache) | %d out"
                 % (u["calls"], u["input"], u["cache_write"], u["cache_read"],
                    hit, u["output"]))
+
+    def say_stream(self, user_text, verbose=False):
+        """The same loop as say(), but yielding each beat as it happens.
+
+        The stage animates from these events in real time rather than
+        re-enacting a finished turn, which matters because the model takes
+        seconds: those seconds become the performance instead of a spinner.
+
+        Yields dicts with a "type": structuring | reference | correction |
+        tracks | reply | error | done.
+        """
+        backend = self._backend()
+        self.steps = []
+        self.messages.append(llm.user(user_text))
+        opening = not self._searched
+
+        for attempt in range(MAX_TURNS):
+            try:
+                reply = backend.complete(self.system_prompt(), self.messages,
+                                         TOOLS, force_tool=(opening and attempt == 0))
+            except Exception as e:
+                yield {"type": "error", "message": "%s: %s" % (type(e).__name__, e)}
+                return
+            self._account(reply)
+            self.messages.append(llm.assistant(reply))
+
+            if not reply.tool_calls:
+                if opening and attempt == 0:
+                    out = self.call_tool("search_by_description",
+                                         {"descriptions": [user_text], "k": 3})
+                    yield {"type": "structuring", "descriptions": [user_text],
+                           "fallback": True}
+                    yield {"type": "tracks", "results": self.last_results,
+                           "step": self.steps[-1] if self.steps else None}
+                    self.messages.append(llm.tool_result(
+                        llm.ToolCall("fallback", "search_by_description", {}), out))
+                    continue
+                yield {"type": "reply", "text": reply.text or ""}
+                yield {"type": "done", "usage": self.usage}
+                return
+
+            results = []
+            for c in reply.tool_calls:
+                if c.bad_args:
+                    payload = {"error": c.bad_args,
+                               "hint": "re-issue the call with valid JSON arguments"}
+                    yield {"type": "error", "message": "malformed tool arguments",
+                           "recoverable": True}
+                else:
+                    # Announce the intent before doing the work, so the stage can
+                    # show the structuring while the search is still running.
+                    if c.name == "search_by_description":
+                        yield {"type": "structuring",
+                               "descriptions": c.args.get("descriptions") or []}
+                    elif c.name in ("add_artists", "search_by_artist"):
+                        yield {"type": "reference",
+                               "artists": (c.args.get("artists")
+                                           or [c.args.get("artist")])}
+                    elif c.name == "search_by_track":
+                        yield {"type": "reference", "track": c.args.get("query")}
+                    elif c.name == "refine":
+                        yield {"type": "correction",
+                               "axes": c.args.get("adjust") or []}
+                    payload = self.call_tool(c.name, c.args)
+                    self._searched = True
+                    yield {"type": "tracks", "results": self.last_results,
+                           "step": self.steps[-1] if self.steps else None}
+                results.append(llm.tool_result(c, payload))
+            self.messages.extend(results)
+
+        yield {"type": "reply", "text": "(stopped: too many tool turns)"}
+        yield {"type": "done", "usage": self.usage}
 
     def trail(self):
         """The dialogue as points on the taste map, for the frontend."""
