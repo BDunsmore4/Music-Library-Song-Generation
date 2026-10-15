@@ -169,6 +169,7 @@ def chat_config():
         "backend": info.get("backend"),
         "model": info.get("model"),
         "base_url": info.get("base_url"),
+        "reason": info.get("reason"),
     })
 
 
@@ -191,9 +192,10 @@ def chat():
     sid = body.get("session")
     if not message:
         return jsonify({"error": "no message"}), 400
-    if not llm.describe().get("configured"):
-        return jsonify({"error": "no LLM backend configured — set LLM_BACKEND "
-                                 "and LLM_BASE_URL/LLM_API_KEY"}), 503
+    info = llm.describe()
+    if not info.get("configured"):
+        return jsonify({"error": info.get("reason")
+                        or "no LLM backend configured"}), 503
 
     cc = _session(sid) if sid else None
     if cc is None:

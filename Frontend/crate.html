@@ -270,7 +270,8 @@ async function boot(){
     if (!c.live){
       meta.textContent += " · chat offline";
       send.disabled = true; input.disabled = true;
-      addMessage("bot", "The server has no model configured, so I can't chat right now.");
+      addMessage("bot", "The server has no model configured, so I can't chat right now."
+        + (c.reason ? "\n\n" + c.reason + "." : ""));
       return;
     }
     const s = await fetch(API + "/api/chat/session", {method: "POST", headers: headers()});

@@ -307,12 +307,29 @@ def get_backend(backend=None, model=None):
 
 
 def describe():
-    """One line for /api/chat/config, so the UI can say what is answering."""
+    """What is answering, for /api/chat/config — and if nothing is, why not.
+
+    `reason` names the exact environment variable to set. "Not configured" on
+    its own sends you hunting through a dashboard; naming the variable does not.
+    Remember Railway variables are per-service, so a service built from a branch
+    does not inherit them from the production one.
+    """
     b = (BACKEND or "").lower()
     if b in ("anthropic", "claude"):
-        return {"backend": "anthropic", "model": MODEL or DEFAULT_MODEL["anthropic"],
-                "configured": bool(API_KEY or os.environ.get("ANTHROPIC_API_KEY"))}
-    return {"backend": "openai", "model": MODEL or DEFAULT_MODEL["openai"],
-            "base_url": BASE_URL or "http://localhost:11434/v1",
-            # A local runtime needs no key, so a blank key is not a misconfiguration.
-            "configured": bool(BASE_URL or API_KEY)}
+        ok = bool(API_KEY or os.environ.get("ANTHROPIC_API_KEY"))
+        out = {"backend": "anthropic", "model": MODEL or DEFAULT_MODEL["anthropic"],
+               "configured": ok}
+        if not ok:
+            out["reason"] = ("LLM_BACKEND is 'anthropic' but neither "
+                             "ANTHROPIC_API_KEY nor LLM_API_KEY is set on this "
+                             "service")
+        return out
+    ok = bool(BASE_URL or API_KEY)
+    out = {"backend": "openai", "model": MODEL or DEFAULT_MODEL["openai"],
+           "base_url": BASE_URL or "http://localhost:11434/v1",
+           # A local runtime needs no key, so a blank key is not a misconfiguration.
+           "configured": ok}
+    if not ok:
+        out["reason"] = ("LLM_BACKEND is 'openai' but neither LLM_BASE_URL nor "
+                         "LLM_API_KEY is set on this service")
+    return out
