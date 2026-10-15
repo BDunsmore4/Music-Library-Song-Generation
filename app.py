@@ -4,7 +4,8 @@ import numpy as np
 import requests
 import torch
 import joblib
-from flask import Flask, request, jsonify, make_response, send_file
+from flask import (Flask, request, jsonify, make_response, redirect,
+                   send_file)
 from pydub import AudioSegment
 from transformers import ClapModel, AutoFeatureExtractor
 
@@ -17,6 +18,8 @@ import chat_routes
 PORT               = int(os.environ.get("PORT", 8765))
 UMAP_REDUCER       = os.environ.get("UMAP_REDUCER_PATH", "umap_reducer.pkl")
 HTML_FILE          = os.environ.get("HTML_FILE", "taste_map_with_words.html")
+# Optional: where the real frontend lives, so / redirects instead of 404ing.
+FRONTEND_URL       = os.environ.get("FRONTEND_URL", "").strip()
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 ELEVENLABS_URL     = "https://api.elevenlabs.io/v1/music/compose"
 
@@ -96,7 +99,27 @@ def embed_bytes_to_coords(audio_bytes):
 # ── Routes ──────────────────────────────────────────────────────────────────
 @app.route("/")
 def serve_html():
-    return send_file(HTML_FILE)
+    """Serve HTML_FILE if it is actually in the image, else say what this is.
+
+    It usually is not. .dockerignore excludes Frontend/ and *.html because the
+    frontend is served from Cloudflare Pages, so in a Docker build there is no
+    HTML here at all and the old unconditional send_file raised
+    FileNotFoundError -> a bare 500 on the service root, which looks like the
+    whole deploy is broken when in fact only this route is.
+    """
+    if HTML_FILE and os.path.exists(HTML_FILE):
+        return send_file(HTML_FILE)
+    if FRONTEND_URL:
+        return redirect(FRONTEND_URL, code=302)
+    return jsonify({
+        "service": "taste-map backend",
+        "note": ("no frontend in this image (HTML_FILE=%r not found); the pages "
+                 "are served from Cloudflare Pages. Set FRONTEND_URL to "
+                 "redirect, or HTML_FILE to a file that ships." % HTML_FILE),
+        "endpoints": sorted(
+            str(r.rule) for r in app.url_map.iter_rules()
+            if r.rule != "/static/<path:filename>"),
+    }), 200
 
 @app.route("/embed", methods=["POST"])
 def embed():
