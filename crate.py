@@ -499,12 +499,18 @@ class Crate(object):
     def _project(self, q):
         """UMAP coords for the query, for the trail. Silently skipped if absent.
 
-        Note the cost: umap's `transform` runs its optimisation epochs on every
-        call, so this is seconds per turn, not milliseconds — it dominates the
-        whole request. Set CRATE_TRAIL=0 to turn the trail off when iterating on
-        the retrieval itself.
+        OFF BY DEFAULT, and deliberately so. umap's `transform` runs its
+        optimisation epochs on every call — seconds per search, plus an 11s
+        one-off load of the 50MB reducer — and the web path does not even read
+        the result: chat_routes builds its trail from each turn's top result and
+        the precomputed coordinates in data/map_coords.json, which is free and
+        visually equivalent. Leaving this on cost a multi-second UMAP transform
+        per turn for a value nobody looked at.
+
+        Set CRATE_TRAIL=1 to get the true projection of the query vector, which
+        is what `session.trail` is for if you want it from the CLI.
         """
-        if os.environ.get("CRATE_TRAIL", "1") not in ("1", "true", "yes"):
+        if os.environ.get("CRATE_TRAIL", "0") not in ("1", "true", "yes"):
             return None
         if self._reducer is None:
             try:
