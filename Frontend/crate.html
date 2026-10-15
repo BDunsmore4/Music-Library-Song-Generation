@@ -130,14 +130,34 @@ button.send[disabled]{opacity:.45; cursor:default}
 </footer>
 
 <script>
-// Point this at the Railway service. Use the staging service's URL to try the
-// branch without touching the live one.
-const API = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
-  ? "http://localhost:8765"
-  : "https://REPLACE-ME.up.railway.app";
+// Backend. Same convention as index.html's CLAP_SERVER.
+const API_DEFAULT = "https://music-library-song-generation-production.up.railway.app";
 
-// Only gates casual abuse — anything shipped to a browser is readable. The real
-// backstop is a spend cap on the Anthropic account. See DEPLOYMENT.md.
+// ?api=... lets a Pages preview talk to a Railway staging service without
+// editing this file. Restricted to Railway hosts and localhost, because a page
+// that will POST a conversation to any URL a link supplies is a handy way to
+// get someone's chat sent somewhere else.
+function resolveApi(){
+  if (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+    return "http://localhost:8765";
+  const want = new URLSearchParams(location.search).get("api");
+  if (want) {
+    try {
+      const u = new URL(want);
+      const ok = u.protocol === "https:" &&
+                 (u.hostname.endsWith(".up.railway.app") || u.hostname.endsWith(".railway.app"));
+      if (ok) return u.origin;
+      console.warn("ignoring ?api= — not a Railway https host:", want);
+    } catch (e) { console.warn("ignoring unparseable ?api=", want); }
+  }
+  return API_DEFAULT;
+}
+const API = resolveApi();
+
+// Leave this empty. Anything shipped to a browser is readable, so a value here
+// is obfuscation, not security — and if *.html is ever un-ignored for the
+// Docker build it would be baked into the image and into git too. The real
+// backstop is a spend cap on the Anthropic account. See DEPLOYMENT.md §8.
 const CHAT_KEY = "";
 
 const thread = document.getElementById("thread");
