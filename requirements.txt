@@ -17,6 +17,6 @@ boto3==1.33.13
 PyJWT==2.8.0
 cryptography==41.0.7
 duckdb==0.9.2
-# Only needed for LLM_BACKEND=anthropic. The openai-compatible backend (Groq,
-# Together, Ollama, vLLM, ...) uses plain requests and needs nothing extra.
+# LLM_BACKEND=anthropic (the default) needs this. The openai-compatible backend
+# (Groq, Together, Ollama, vLLM, ...) uses plain requests and needs nothing.
 anthropic==0.72.0

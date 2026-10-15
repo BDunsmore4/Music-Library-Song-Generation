@@ -293,6 +293,11 @@ class CrateChat(object):
         self.messages = []
         self.last_results = []      # structured results from the most recent tool call
         self._searched = False      # has any search happened in this conversation
+        # Token accounting for the whole conversation. cache_read is the number
+        # that tells you prompt caching is live; if it stays 0 the breakpoints
+        # are not matching and you are paying full price every call.
+        self.usage = {"calls": 0, "input": 0, "output": 0,
+                      "cache_write": 0, "cache_read": 0}
         self._client = None
 
     def system_prompt(self):
@@ -377,6 +382,7 @@ class CrateChat(object):
         for attempt in range(MAX_TURNS):
             reply = backend.complete(self.system_prompt(), self.messages, TOOLS,
                                      force_tool=(opening and attempt == 0))
+            self._account(reply)
             self.messages.append(llm.assistant(reply))
 
             if not reply.tool_calls:
@@ -408,6 +414,23 @@ class CrateChat(object):
             self.messages.extend(results)
 
         return "(stopped: too many tool turns)"
+
+    def _account(self, reply):
+        self.usage["calls"] += 1
+        for k in ("input", "output", "cache_write", "cache_read"):
+            self.usage[k] += int(reply.usage.get(k, 0) or 0)
+
+    def cache_summary(self):
+        """Human-readable cache effectiveness for this conversation."""
+        u = self.usage
+        billed = u["input"] + u["cache_write"] + u["cache_read"]
+        if not billed:
+            return "no usage reported yet"
+        hit = 100.0 * u["cache_read"] / float(billed)
+        return ("%d calls | %d uncached in, %d cache write, %d cache read "
+                "(%.0f%% of input served from cache) | %d out"
+                % (u["calls"], u["input"], u["cache_write"], u["cache_read"],
+                   hit, u["output"]))
 
     def trail(self):
         """The dialogue as points on the taste map, for the frontend."""

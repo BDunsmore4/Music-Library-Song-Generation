@@ -210,9 +210,11 @@ def chat():
         print("[chat] error: %s: %s" % (type(e).__name__, e))
         return jsonify({"error": str(e)}), 500
 
+    print("[chat] %s" % cc.cache_summary())
     return jsonify({"session": sid, "reply": reply,
                     "tracks": _public(cc.last_results),
-                    "trail": _trail(cc)})
+                    "trail": _trail(cc),
+                    "usage": cc.usage})
 
 
 @bp.route("/api/chat/feedback", methods=["POST"])

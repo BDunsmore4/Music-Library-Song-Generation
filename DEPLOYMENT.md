@@ -227,3 +227,43 @@ retrieval rather than an error. Three defences are already in place:
 An axis the model invents is already reported back as `unknown_axes` rather
 than silently ignored, so a hallucinated "danceability" shows up instead of
 doing nothing.
+
+### Prompt caching (on by default, Anthropic path)
+
+The static prefix is ~2,500 tokens of system prompt plus ~1,200 of tool
+schemas, and it is resent on every **API call** — not every user turn. The tool
+loop makes two to four calls for a single thing the user says, so without
+caching that prefix is billed two to four times per message.
+
+Two `cache_control` breakpoints are set per call:
+
+1. the last system block — and because the cached prefix runs
+   `tools -> system -> messages`, this also captures the tool schemas;
+2. the end of the conversation so far, so call N of a tool loop reuses call
+   N-1's prefix rather than only the static header.
+
+Two of the four available breakpoints, so there is room if you add more.
+
+Verify it rather than assuming. Every `/api/chat` response carries a `usage`
+object and the server logs a line per turn:
+
+    [chat] 3 calls | 180 uncached in, 3700 cache write, 7400 cache read
+           (87% of input served from cache) | 210 out
+
+`cache_read` is the only proof caching is live. **If it stays 0, the
+breakpoints are not matching and you are paying full price on every call** —
+the most likely causes are a prefix below the model's minimum cacheable length,
+or something non-deterministic in the system prompt (it is built from the axis
+list, which is stable, so this should not happen).
+
+Controls:
+
+    LLM_CACHE=0            disable entirely, to compare bills
+    LLM_CACHE_MESSAGES=0   keep the static header cached, drop breakpoint 2
+
+Cache writes cost more than ordinary input and reads cost much less, so this
+pays off as soon as a prefix is read once — immediate inside a tool loop. The
+static header is where nearly all the saving is; breakpoint 2 is marginal and
+switchable for that reason. Entries are the default 5-minute TTL, which
+comfortably covers a conversation but not a gap between sessions, so the first
+call of each new conversation writes rather than reads.

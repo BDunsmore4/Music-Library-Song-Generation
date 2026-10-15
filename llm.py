@@ -50,6 +50,25 @@ TIMEOUT = int(os.environ.get("LLM_TIMEOUT", 120))
 MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", 1200))
 TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", 0.4))
 
+# Anthropic prompt caching. The static prefix here is large — ~2,500 tokens of
+# system prompt plus ~1,200 of tool schemas — and it is resent on EVERY API
+# call. Note that is per API call, not per user turn: the tool loop makes two to
+# four calls for a single thing the user says, so the static prefix is paid for
+# two to four times per message without caching.
+#
+# A cache_control breakpoint caches everything from the start of the prompt up
+# to and including that block, and the prefix is ordered tools -> system ->
+# messages. So one breakpoint on the last system block covers both the tools and
+# the system prompt.
+#
+# CACHE_MESSAGES adds a second breakpoint at the end of the conversation so far,
+# which makes each call in a tool loop reuse the previous call's prefix too.
+# Writes cost more than ordinary input and reads cost much less, so this is a
+# win whenever a prefix is read at least once — which inside a tool loop is
+# immediate. Turn it off to compare.
+CACHE = os.environ.get("LLM_CACHE", "1") not in ("0", "false", "no")
+CACHE_MESSAGES = os.environ.get("LLM_CACHE_MESSAGES", "1") not in ("0", "false", "no")
+
 DEFAULT_MODEL = {"anthropic": "claude-sonnet-5",
                  "openai": "llama-3.3-70b-versatile"}
 
@@ -71,12 +90,15 @@ class ToolCall(object):
 
 
 class Reply(object):
-    """A model turn: free text, and/or tool calls."""
+    """A model turn: free text, and/or tool calls, plus token accounting."""
 
-    def __init__(self, text="", tool_calls=None, raw=None):
+    def __init__(self, text="", tool_calls=None, raw=None, usage=None):
         self.text = text or ""
         self.tool_calls = tool_calls or []
         self.raw = raw
+        # {input, output, cache_write, cache_read}. cache_read > 0 is the only
+        # proof that caching is actually working — assume nothing.
+        self.usage = usage or {}
 
 
 # ── neutral message helpers ──────────────────────────────────────────────────
@@ -120,6 +142,37 @@ class AnthropicBackend(object):
         return [{"name": t["name"], "description": t["description"],
                  "input_schema": t["input_schema"]} for t in tools]
 
+    def _system(self, system):
+        """System prompt as blocks, with the cache breakpoint on the last one.
+
+        Because the cached prefix runs tools -> system -> messages, this single
+        breakpoint also captures the tool schemas sitting in front of it.
+        """
+        block = {"type": "text", "text": system}
+        if CACHE:
+            block["cache_control"] = {"type": "ephemeral"}
+        return [block]
+
+    @staticmethod
+    def _mark_last(messages):
+        """Second breakpoint: the end of the conversation so far.
+
+        Lets call N of a tool loop reuse call N-1's prefix instead of only the
+        static header. Content is normalised to a block list so the marker has
+        somewhere to live.
+        """
+        if not messages:
+            return messages
+        last = messages[-1]
+        content = last.get("content")
+        if isinstance(content, str):
+            content = [{"type": "text", "text": content}]
+            last["content"] = content
+        if isinstance(content, list) and content:
+            content[-1] = dict(content[-1])
+            content[-1]["cache_control"] = {"type": "ephemeral"}
+        return messages
+
     def _messages(self, history):
         out = []
         for m in history:
@@ -146,15 +199,26 @@ class AnthropicBackend(object):
         return out
 
     def complete(self, system, history, tools, force_tool=False):
-        kw = dict(model=self.model, max_tokens=MAX_TOKENS, system=system,
-                  tools=self._tools(tools), messages=self._messages(history))
+        messages = self._messages(history)
+        if CACHE and CACHE_MESSAGES:
+            messages = self._mark_last(messages)
+        kw = dict(model=self.model, max_tokens=MAX_TOKENS,
+                  system=self._system(system),
+                  tools=self._tools(tools), messages=messages)
         if force_tool:
             kw["tool_choice"] = {"type": "any"}
         r = self._c().messages.create(**kw)
         text = "".join(b.text for b in r.content if getattr(b, "type", "") == "text")
         calls = [ToolCall(b.id, b.name, b.input) for b in r.content
                  if getattr(b, "type", "") == "tool_use"]
-        return Reply(text, calls, raw=r)
+        u = getattr(r, "usage", None)
+        usage = dict(
+            input=getattr(u, "input_tokens", 0) or 0,
+            output=getattr(u, "output_tokens", 0) or 0,
+            cache_write=getattr(u, "cache_creation_input_tokens", 0) or 0,
+            cache_read=getattr(u, "cache_read_input_tokens", 0) or 0,
+        ) if u is not None else {}
+        return Reply(text, calls, raw=r, usage=usage)
 
 
 class OpenAIBackend(object):
@@ -209,6 +273,7 @@ class OpenAIBackend(object):
                                               r.text[:400]))
         data = r.json()
         msg = (data.get("choices") or [{}])[0].get("message") or {}
+        uu = data.get("usage") or {}
         calls = []
         for tc in msg.get("tool_calls") or []:
             fn = tc.get("function") or {}
@@ -225,7 +290,10 @@ class OpenAIBackend(object):
                     bad = "could not parse arguments (%s): %s" % (e, str(raw)[:200])
             calls.append(ToolCall(tc.get("id") or ("call_%d" % len(calls)),
                                   fn.get("name") or "", args, bad_args=bad))
-        return Reply(msg.get("content") or "", calls, raw=data)
+        return Reply(msg.get("content") or "", calls, raw=data,
+                     usage=dict(input=uu.get("prompt_tokens", 0) or 0,
+                                output=uu.get("completion_tokens", 0) or 0,
+                                cache_write=0, cache_read=0))
 
 
 def get_backend(backend=None, model=None):
