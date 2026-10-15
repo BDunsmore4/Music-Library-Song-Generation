@@ -28,6 +28,7 @@ import sys
 
 import crate
 import llm
+import taste_axes
 
 MODEL = os.environ.get("CRATE_MODEL", "").strip()
 MAX_TURNS = int(os.environ.get("CRATE_MAX_TOOL_TURNS", 6))
@@ -499,7 +500,9 @@ class CrateChat(object):
                     out = self.call_tool("search_by_description",
                                          {"descriptions": [user_text], "k": 3})
                     yield {"type": "structuring", "descriptions": [user_text],
-                           "fallback": True}
+                           "embedded": [taste_axes.TEMPLATE % user_text],
+                           "template": taste_axes.TEMPLATE, "dims": 512,
+                           "averaged": False, "fallback": True}
                     yield {"type": "tracks", "results": self.last_results,
                            "step": self.steps[-1] if self.steps else None}
                     self.messages.append(llm.tool_result(
@@ -520,8 +523,15 @@ class CrateChat(object):
                     # Announce the intent before doing the work, so the stage can
                     # show the structuring while the search is still running.
                     if c.name == "search_by_description":
-                        yield {"type": "structuring",
-                               "descriptions": c.args.get("descriptions") or []}
+                        ds = c.args.get("descriptions") or []
+                        # The literal strings handed to CLAP's text encoder,
+                        # template included. Shown verbatim on the stage: the
+                        # whole point of the explainer is that you see the real
+                        # input, not a paraphrase of it.
+                        yield {"type": "structuring", "descriptions": ds,
+                               "embedded": [taste_axes.TEMPLATE % d for d in ds],
+                               "template": taste_axes.TEMPLATE,
+                               "dims": 512, "averaged": len(ds) > 1}
                     elif c.name in ("add_artists", "search_by_artist"):
                         yield {"type": "reference",
                                "artists": (c.args.get("artists")

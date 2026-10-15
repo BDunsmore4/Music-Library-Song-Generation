@@ -344,42 +344,62 @@ in effect without reading logs.
 
 ## 10. The stage (Frontend/stage.html)
 
-Two acts in one page. It opens as an ordinary warm-toned chat with nothing to
-suggest there is anything else there. Type the codeword and the assistant says
-"Enjoy the show": the house lights go down, drapes close across the black, and
-withdraw to reveal the 3-D library with the input risen to the top like
-surtitles above a proscenium. From then on each prompt plays as five beats.
+Two acts. It opens as an ordinary warm-toned chat with nothing to suggest there
+is anything else there. On the codeword the assistant says "Enjoy the show" and
+from then on each prompt plays as an explainer inside the 3-D library, then
+returns you to the chat with the tracks listed.
 
-| Beat | Driven by | What you see |
+The stage is a **demonstration, not a place to live**, and its job is
+educational: show what actually happened. The caption panel is the lesson; the
+point field is the illustration.
+
+| # | Step | What it shows |
 |---|---|---|
-| utterance | the typed text | it becomes the surtitle |
-| structuring | `structuring` event | the sound descriptions the model wrote |
-| landing | `tracks.position` | a pulsing marker; the camera eases to it |
-| correction | `correction` event | an arc from the last position, labelled `+groove` |
-| illumination | `tracks[].relevance` | those points ignite; the billing rises |
+| 1 | you typed | your words, unaltered |
+| 2 | claude structured it | the literal `search_by_description(descriptions=[…])` call |
+| 3 | what clap is given, verbatim | `This is a sparse solo piano, slow and quiet song.` — the template applied, then `2 vectors, averaged · L2-normalised · 512-d` |
+| 4 | where that lands | a halo over the region, wide establishing shot, then a scripted pan in |
+| 5 | nearest neighbours in 512-d | the matches ignite and label themselves with name and artist |
 
-The codeword is `CODEWORD` near the top of the `<script>`. **It is in client
-source, so it is a surprise rather than a secret** — check it server-side if it
-has to be unguessable.
+Step 3 is the point of the whole thing: it prints the exact string handed to
+CLAP's text encoder, template included, rather than a paraphrase. The template
+itself comes from the backend (`taste_axes.TEMPLATE`) so it cannot drift out of
+date.
 
-`crate.html` is untouched and still the plain version; keep it if you want a
-demo with no theatre in it.
+Step 5 says "in 512-d" deliberately, and the note under step 4 says the view is
+a projection. The matches sometimes will *not* look adjacent on screen, and
+that is the lesson rather than a glitch — the neighbours are chosen by cosine
+distance in the full space, and the 3-D layout is a UMAP shadow of it.
+
+The field is rendered with the original `space.html` parameters — `setHSL(hue,
+0.55, 0.6)`, point size 3.4, `FogExp2(…, 0.00055)` — so the constellation looks
+as it did there. An earlier version dimmed it to make highlights pop and lost
+the constellation; don't do that again. The camera is a **scripted tween**, not
+a free orbit: wide on the whole field, hold, then ease in to the neighbourhood,
+because the shot is part of the explanation.
+
+The codeword is `CODEWORD` near the top of the `<script>`, matched forgivingly
+(case and punctuation are ignored). **It is in client source, so it is a
+surprise, not a secret** — check it server-side if it must be unguessable.
+A "show the mechanism: on/off" toggle appears in the header once unlocked, so
+the explainer can be skipped without reloading.
+
+`crate.html` is untouched and still the plain version.
 
 ### What the stage needs from the backend
 
-- `POST /api/chat/stream` — SSE, one event per beat. Streamed rather than
-  returned at the end so the animation runs *while* the model works: the
-  several seconds of latency become the performance instead of a spinner.
-- `tracks[].relevance` — 0–1, normalised within the turn. Brightness, not a
-  score: an absolute cosine of 0.31 misleads, a relative intensity does not.
-  The wildcard lands near 0.15 and visibly burns cooler and dimmer.
-- `tracks[].x3/y3/z3` and `position` from `data/map_coords_3d.json`.
-- `steps[]` on the non-streaming `/api/chat` too, for anything that wants the
+- `POST /api/chat/stream` — SSE, one event per step, from a `say_stream()`
+  generator over the same tool loop. Streamed rather than returned at the end
+  so the explanation unfolds *while* the model works.
+- `structuring` carries `descriptions`, `embedded` (the templated strings),
+  `template`, `dims` and `averaged`.
+- `tracks[].relevance` — 0–1 within the turn. Brightness, not a score.
+- `tracks[].x3/y3/z3` and `position`, from `data/map_coords_3d.json`.
+- `steps[]` on the non-streaming `/api/chat` for anything that wants the
   mechanism without the theatre.
 
-`position` is the **relevance-weighted centroid of the tracks returned**, not a
+`position` is the relevance-weighted centroid of the tracks returned, not a
 projection of the query vector. A 512→3 linear fit would be dishonest (UMAP is
 far too non-linear) and `umap.transform` costs seconds, which would wreck the
-choreography. This is exact, free, and always consistent with what lights up —
-but it is a visualisation, not a claim about where the request "really" sits in
-512 dimensions. Worth keeping that distinction if you ever narrate it.
+timing. This is exact, free and always consistent with what lights up — and the
+caption says so on screen.
