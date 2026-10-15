@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crate · Taste Map</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#111827; --surface:#161c27; --surface-2:#1d2436;
+  --border:#242d3f; --border-2:#2e3a50;
+  --text:#dce3f0; --muted:#7a8699; --faint:#3a4560;
+  --accent:#4f8ef7; --amber:#c8982e; --sage:#3da870; --coral:#d45f5f;
+  --radius:6px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:'Inter',system-ui,sans-serif; font-size:13px; line-height:1.55;
+  display:flex; flex-direction:column;
+}
+header{
+  display:flex; align-items:center; gap:14px; flex:0 0 auto;
+  padding:12px 18px; border-bottom:1px solid var(--border); background:var(--surface);
+}
+header h1{margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em}
+header .meta{color:var(--muted); font-size:11.5px}
+header a{margin-left:auto; color:var(--muted); text-decoration:none; font-size:12px}
+header a:hover{color:var(--accent)}
+
+main{flex:1 1 auto; overflow-y:auto; padding:22px 18px 8px}
+.thread{max-width:680px; margin:0 auto; display:flex; flex-direction:column; gap:18px}
+
+.msg{display:flex}
+.msg.me{justify-content:flex-end}
+.msg.me .body{
+  background:var(--surface-2); border:1px solid var(--border-2);
+  border-radius:var(--radius); padding:7px 11px; max-width:78%;
+}
+.msg.bot .body{max-width:100%; white-space:pre-wrap}
+
+/* track list — deliberately a list, not cards */
+.tracks{display:flex; flex-direction:column; margin-top:2px}
+.track{
+  display:flex; align-items:center; gap:11px;
+  padding:8px 10px; border-radius:var(--radius);
+  border:1px solid transparent;
+}
+.track:hover{background:var(--surface); border-color:var(--border)}
+.track.wild{border-left:2px solid var(--amber); border-radius:0 var(--radius) var(--radius) 0}
+.play{
+  flex:0 0 auto; width:26px; height:26px; border-radius:50%; cursor:pointer;
+  border:1px solid var(--border-2); background:var(--surface-2); color:var(--text);
+  display:flex; align-items:center; justify-content:center; font-size:10px; padding:0;
+}
+.play:hover{border-color:var(--accent); color:var(--accent)}
+.play.on{background:var(--accent); border-color:var(--accent); color:#fff}
+.play[disabled]{opacity:.3; cursor:default}
+.info{min-width:0; flex:1 1 auto}
+.name{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.artist{color:var(--muted); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.tag{
+  flex:0 0 auto; color:var(--amber); font-size:10px; letter-spacing:.04em;
+  text-transform:uppercase; border:1px solid rgba(200,152,46,.35);
+  border-radius:3px; padding:1px 5px;
+}
+.vote{flex:0 0 auto; display:flex; gap:3px; opacity:0; transition:opacity .12s}
+.track:hover .vote, .vote.set{opacity:1}
+.vote button{
+  width:24px; height:24px; padding:0; cursor:pointer; font-size:11px;
+  background:none; border:1px solid var(--border-2); border-radius:4px; color:var(--muted);
+}
+.vote button:hover{color:var(--text); border-color:var(--border-2)}
+.vote button.up.on{color:var(--sage); border-color:var(--sage)}
+.vote button.down.on{color:var(--coral); border-color:var(--coral)}
+
+.note{color:var(--muted); font-size:11.5px}
+.err{color:var(--coral); font-size:12px}
+.dots span{
+  display:inline-block; width:4px; height:4px; margin-right:3px; border-radius:50%;
+  background:var(--muted); animation:b 1.1s infinite;
+}
+.dots span:nth-child(2){animation-delay:.16s}
+.dots span:nth-child(3){animation-delay:.32s}
+@keyframes b{0%,60%,100%{opacity:.25}30%{opacity:1}}
+
+footer{
+  flex:0 0 auto; border-top:1px solid var(--border); background:var(--surface);
+  padding:12px 18px;
+}
+.composer{max-width:680px; margin:0 auto; display:flex; gap:8px}
+textarea{
+  flex:1 1 auto; resize:none; font:inherit; color:var(--text);
+  background:var(--bg); border:1px solid var(--border-2); border-radius:var(--radius);
+  padding:9px 11px; max-height:120px; min-height:38px;
+}
+textarea:focus{outline:none; border-color:var(--accent)}
+textarea::placeholder{color:var(--faint)}
+button.send{
+  flex:0 0 auto; font:inherit; font-weight:500; cursor:pointer; padding:0 16px;
+  background:var(--accent); color:#fff; border:1px solid var(--accent);
+  border-radius:var(--radius);
+}
+button.send[disabled]{opacity:.45; cursor:default}
+@media (max-width:620px){
+  main{padding:16px 12px 4px}
+  .vote{opacity:1}
+  .artist{font-size:11px}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Crate</h1>
+  <span class="meta" id="meta">connecting…</span>
+  <a href="./index.html">← map</a>
+</header>
+
+<main id="main">
+  <div class="thread" id="thread"></div>
+</main>
+
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="What do you feel like? e.g. something for cooking on a rainy Sunday"></textarea>
+    <button class="send" id="send">Send</button>
+  </div>
+</footer>
+
+<script>
+// Point this at the Railway service. Use the staging service's URL to try the
+// branch without touching the live one.
+const API = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://localhost:8765"
+  : "https://REPLACE-ME.up.railway.app";
+
+// Only gates casual abuse — anything shipped to a browser is readable. The real
+// backstop is a spend cap on the Anthropic account. See DEPLOYMENT.md.
+const CHAT_KEY = "";
+
+const thread = document.getElementById("thread");
+const input  = document.getElementById("input");
+const send   = document.getElementById("send");
+const meta   = document.getElementById("meta");
+
+let session = null, busy = false, audio = null, playing = null;
+
+const headers = () => {
+  const h = {"Content-Type": "application/json"};
+  if (CHAT_KEY) h["X-Chat-Key"] = CHAT_KEY;
+  return h;
+};
+
+function el(tag, cls, text){
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+function scroll(){
+  const m = document.getElementById("main");
+  m.scrollTop = m.scrollHeight;
+}
+
+function addMessage(who, text){
+  const row = el("div", "msg " + who);
+  row.appendChild(el("div", "body", text));
+  thread.appendChild(row);
+  scroll();
+  return row;
+}
+
+function thinking(){
+  const row = el("div", "msg bot");
+  const b = el("div", "body");
+  const d = el("div", "dots");
+  d.innerHTML = "<span></span><span></span><span></span>";
+  b.appendChild(d); row.appendChild(b);
+  thread.appendChild(row); scroll();
+  return row;
+}
+
+// one shared element, so a new preview always stops the last one
+function playPreview(url, btn){
+  if (playing === btn){ audio.pause(); return; }
+  if (audio) audio.pause();
+  audio = new Audio(url);
+  audio.play().catch(() => { btn.textContent = "—"; btn.disabled = true; });
+  if (playing) { playing.classList.remove("on"); playing.textContent = "▶"; }
+  playing = btn; btn.classList.add("on"); btn.textContent = "❙❙";
+  audio.onended = audio.onpause = () => {
+    btn.classList.remove("on"); btn.textContent = "▶";
+    if (playing === btn) playing = null;
+  };
+}
+
+function vote(trackId, rating, group, pressed){
+  group.querySelectorAll("button").forEach(b => b.classList.remove("on"));
+  pressed.classList.add("on");
+  group.classList.add("set");
+  fetch(API + "/api/chat/feedback", {
+    method: "POST", headers: headers(),
+    body: JSON.stringify({session, track_id: trackId, rating, source: "ui"})
+  }).catch(() => {});
+}
+
+function addTracks(tracks){
+  if (!tracks || !tracks.length) return;
+  const wrap = el("div", "tracks");
+  tracks.forEach(t => {
+    const row = el("div", "track" + (t.wildcard ? " wild" : ""));
+
+    const play = el("button", "play", t.preview_url ? "▶" : "—");
+    if (!t.preview_url) play.disabled = true;
+    else play.onclick = () => playPreview(t.preview_url, play);
+    row.appendChild(play);
+
+    const info = el("div", "info");
+    info.appendChild(el("div", "name", t.name));
+    info.appendChild(el("div", "artist", t.artist));
+    row.appendChild(info);
+
+    if (t.wildcard) row.appendChild(el("span", "tag", "further out"));
+
+    const group = el("div", "vote");
+    const up = el("button", "up", "▲"), down = el("button", "down", "▼");
+    up.title = "this worked"; down.title = "not this";
+    up.onclick   = () => vote(t.track_id, 1, group, up);
+    down.onclick = () => vote(t.track_id, 0, group, down);
+    group.appendChild(up); group.appendChild(down);
+    row.appendChild(group);
+
+    wrap.appendChild(row);
+  });
+  const row = el("div", "msg bot");
+  row.appendChild(wrap);
+  thread.appendChild(row);
+  scroll();
+}
+
+async function boot(){
+  try {
+    const r = await fetch(API + "/api/chat/config", {headers: headers()});
+    const c = await r.json();
+    if (!r.ok) throw new Error(c.error || r.status);
+    meta.textContent = c.tracks.toLocaleString() + " tracks";
+    if (!c.live){
+      meta.textContent += " · chat offline";
+      send.disabled = true; input.disabled = true;
+      addMessage("bot", "The server has no model configured, so I can't chat right now.");
+      return;
+    }
+    const s = await fetch(API + "/api/chat/session", {method: "POST", headers: headers()});
+    session = (await s.json()).session;
+    addMessage("bot", "Tell me what you're after — a mood, a setting, or how you want it to sound. I'll pull three from your library, plus one from further out.");
+  } catch (e) {
+    meta.textContent = "offline";
+    send.disabled = true;
+    const row = addMessage("bot", "");
+    row.querySelector(".body").appendChild(
+      el("div", "err", "Can't reach the server (" + e.message + "). Check API at the top of this file."));
+  }
+}
+
+async function say(){
+  const text = input.value.trim();
+  if (!text || busy) return;
+  busy = true; send.disabled = true;
+  input.value = ""; input.style.height = "auto";
+  addMessage("me", text);
+  const wait = thinking();
+
+  try {
+    const r = await fetch(API + "/api/chat", {
+      method: "POST", headers: headers(),
+      body: JSON.stringify({session, message: text})
+    });
+    const d = await r.json();
+    wait.remove();
+    if (!r.ok) throw new Error(d.error || ("server " + r.status));
+    if (d.session) session = d.session;
+    if (d.reply) addMessage("bot", d.reply);
+    addTracks(d.tracks);
+  } catch (e) {
+    wait.remove();
+    const row = addMessage("bot", "");
+    row.querySelector(".body").appendChild(el("div", "err", e.message));
+  } finally {
+    busy = false; send.disabled = false; input.focus();
+  }
+}
+
+send.onclick = say;
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); say(); }
+});
+input.addEventListener("input", () => {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 120) + "px";
+});
+
+boot();
+</script>
+</body>
+</html>

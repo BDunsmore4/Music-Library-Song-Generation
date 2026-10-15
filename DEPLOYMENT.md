@@ -267,3 +267,57 @@ static header is where nearly all the saving is; breakpoint 2 is marginal and
 switchable for that reason. Entries are the default 5-minute TTL, which
 comfortably covers a conversation but not a gap between sessions, so the first
 call of each new conversation writes rather than reads.
+
+## 8. The chat page
+
+`Frontend/crate.html` — a standalone page in the same visual language as the
+map. Deliberately just a conversation and a track list: no map, no sidebar.
+Each turn shows three matches plus the wildcard (thin amber rule, "further
+out" tag), every row has a 30-second preview and thumbs up/down.
+
+Two things to set at the top of the `<script>`:
+
+    const API = "https://<your-service>.up.railway.app";
+    const CHAT_KEY = "";   // see the warning below
+
+The thumbs post straight to `/api/chat/feedback`, so a click is recorded even
+if the user never says anything about it in prose — that is the cleanest
+training signal the system gets, and the wildcard is where it is most
+informative.
+
+**`CHAT_KEY` in a static page is obfuscation, not security.** Anything shipped
+to a browser is readable, so a shared secret only deters casual traffic. The
+options, in order of how much work they are:
+
+1. Set a **monthly spend cap on the Anthropic account**. Do this regardless —
+   it is the only backstop that cannot be bypassed.
+2. Proxy `/api/chat` through a Cloudflare Pages Function and inject the secret
+   server-side, so it never reaches the browser. You are already on Cloudflare,
+   so this is the proper fix and not much work.
+3. Rate-limit per IP in Flask.
+
+## 9. Testing the branch on Railway without touching main
+
+You do not need a separate repo. In the **same Railway project**, add a second
+service from the same GitHub repo and set its branch to `crate-chat`. It gets
+its own URL and its own variables; the live service keeps running from `main`
+untouched. Point `API` in `crate.html` at the staging URL to try it.
+
+(Railway can also create a deployment per pull request if you enable PR
+environments on the repo, which does the same thing automatically.)
+
+Four things to get right on a staging service:
+
+- **Give it its own Volume**, with its own `CRATE_STORE_DIR`. Sharing one means
+  test conversations land in the same training log as real ones.
+- **R2 is shared** if you copy the `R2_*` variables across. The chat endpoints
+  never write to R2, so chat-only testing is safe — but `/generate` and
+  `/embed_track` append to the live `generated.json` / `searched.json`
+  manifests, so do not exercise those on staging with production credentials.
+- It loads **its own copy of CLAP**, so it costs memory and money while it is
+  running. Sleep or delete it when you are done.
+- OAuth redirect URIs are per-URL, so Spotify/Apple login will not work on the
+  staging URL until you add it to those apps. Irrelevant for the chat.
+
+When you are happy, merge `crate-chat` into `main` and delete the staging
+service — the live service picks the change up on its next deploy.
