@@ -9,6 +9,10 @@ from pydub import AudioSegment
 from transformers import ClapModel, AutoFeatureExtractor
 
 import r2_client
+# Crate-digging chat (CLAP retrieval + Rocchio refinement over the library).
+# The recommender is built lazily inside the blueprint and reuses the CLAP
+# model loaded below, so this import stays cheap.
+import chat_routes
 
 PORT               = int(os.environ.get("PORT", 8765))
 UMAP_REDUCER       = os.environ.get("UMAP_REDUCER_PATH", "umap_reducer.pkl")
@@ -27,6 +31,7 @@ reducer = joblib.load(UMAP_REDUCER)
 print("  UMAP reducer ready")
 
 app = Flask(__name__)
+app.register_blueprint(chat_routes.bp)
 
 @app.before_request
 def handle_preflight():

@@ -1,0 +1,92 @@
+{
+ "aggression": {
+  "verdict": "verified",
+  "note": "hi_ratio +0.19",
+  "keep": true,
+  "rms": -0.005146279403104479,
+  "onset_rate": 0.0863200620974193,
+  "centroid": 0.2076996411071234,
+  "hi_ratio": 0.18590028778097534
+ },
+ "brightness": {
+  "verdict": "failed",
+  "note": "centroid should be +, measured +0.008",
+  "keep": false,
+  "rms": -0.49681752019466885,
+  "onset_rate": -0.27444077832988706,
+  "centroid": 0.008160090667674084,
+  "hi_ratio": -0.06474338603762264
+ },
+ "density": {
+  "verdict": "unverified",
+  "note": "no waveform proxy \u2014 judge by poles",
+  "keep": true,
+  "rms": -0.3611613462371804,
+  "onset_rate": -0.15607461735082273,
+  "centroid": 0.13393971044122713,
+  "hi_ratio": 0.07570661896243293
+ },
+ "electronic": {
+  "verdict": "unverified",
+  "note": "no waveform proxy \u2014 judge by poles",
+  "keep": true,
+  "rms": -0.10576561961799574,
+  "onset_rate": -0.10397403938831803,
+  "centroid": -0.27722796919965775,
+  "hi_ratio": -0.29955088389871
+ },
+ "energy": {
+  "verdict": "verified",
+  "note": "rms +0.84",
+  "keep": true,
+  "rms": 0.8401057789530995,
+  "onset_rate": 0.5201410923018904,
+  "centroid": 0.7888349870554117,
+  "hi_ratio": 0.8187477638640429
+ },
+ "groove": {
+  "verdict": "verified",
+  "note": "onset_rate +0.22",
+  "keep": true,
+  "rms": 0.44085778730874786,
+  "onset_rate": 0.2178420929122259,
+  "centroid": 0.09183302036689296,
+  "hi_ratio": 0.13392993255480615
+ },
+ "happiness": {
+  "verdict": "unverified",
+  "note": "no waveform proxy \u2014 judge by poles",
+  "keep": true,
+  "rms": -0.2555339503772264,
+  "onset_rate": -0.15582550028856146,
+  "centroid": 0.22035978177535306,
+  "hi_ratio": 0.18213002366692962
+ },
+ "tempo": {
+  "verdict": "failed",
+  "note": "onset_rate should be +, measured -0.175",
+  "keep": false,
+  "rms": -0.31887065411837906,
+  "onset_rate": -0.17464528320713424,
+  "centroid": 0.10411671240791563,
+  "hi_ratio": 0.03250391671018566
+ },
+ "vocal": {
+  "verdict": "unverified",
+  "note": "no waveform proxy \u2014 judge by poles",
+  "keep": true,
+  "rms": -0.29828420315781284,
+  "onset_rate": -0.15820289041529745,
+  "centroid": 0.24649696107734526,
+  "hi_ratio": 0.17988244313825708
+ },
+ "warmth": {
+  "verdict": "verified",
+  "note": "centroid -0.36",
+  "keep": true,
+  "rms": 0.015680174224158044,
+  "onset_rate": -0.1095817289058032,
+  "centroid": -0.35938088200980006,
+  "hi_ratio": -0.35723730263669595
+ }
+}
