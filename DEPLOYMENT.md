@@ -170,3 +170,60 @@ railway run python crate_store.py fit        # fit + leave-one-out validate
 `fit` refuses to install an adapter that does not improve held-out rank, and on
 the current data it correctly refuses — see the negative result documented at
 the top of `crate_store.py`.
+
+## 7. Choosing the model (open weights or Claude)
+
+The chat is not tied to a vendor. `llm.py` speaks two protocols, picked by
+`LLM_BACKEND`:
+
+- `openai` — any OpenAI-compatible `/chat/completions` endpoint **with tool
+  support**. Covers Groq, Together, Fireworks, DeepInfra, OpenRouter, vLLM,
+  llama.cpp's server and Ollama. Needs no SDK; it is plain `requests`.
+- `anthropic` — the Claude Messages API. Needs `anthropic` from
+  requirements.txt; drop that line if you are never using it.
+
+Hosted open weights (cheap, no GPU of your own):
+
+    LLM_BACKEND=openai
+    LLM_BASE_URL=https://api.groq.com/openai/v1
+    LLM_API_KEY=...
+    LLM_MODEL=llama-3.3-70b-versatile
+
+Fully local, nothing billed (dev machine, not Railway — a CPU dyno cannot serve
+a 14B model at conversational speed):
+
+    LLM_BACKEND=openai
+    LLM_BASE_URL=http://localhost:11434/v1
+    LLM_MODEL=qwen3:14b
+
+Model names move around — check your provider's current list. The only hard
+requirement is **tool calling**; without it the design collapses, because the
+assistant's entire job is choosing tool calls.
+
+`/api/chat/config` reports `backend`, `model` and `live`, so you can confirm
+which one answered without reading logs.
+
+### Before you switch, check the prompt
+
+The system prompt is ~2,500 tokens and is resent on every turn, so it dominates
+the bill far more than the model's output does. Enabling prompt caching on the
+Anthropic path is a one-line change and cuts repeat turns by roughly 90% — do
+that before concluding the model is the expensive part.
+
+### What degrades on a smaller model
+
+Open-weights models are weaker at obeying a long list of "never do X" rules,
+and this prompt has several. Expect artist names leaking into `descriptions`
+and negation in prose ("not too fast"), both of which quietly produce bad
+retrieval rather than an error. Three defences are already in place:
+
+- `force_tool` requires a tool call on the opening turn instead of hoping for
+  one, so the model cannot burn the turn asking "what mood are you in?".
+- If it still will not call a tool, the chat falls back to a deterministic
+  `search_by_description` on the raw message, so the user always gets tracks.
+- Malformed tool arguments are returned to the model as an error it can retry,
+  rather than raising. Smaller models need this occasionally.
+
+An axis the model invents is already reported back as `unknown_axes` rather
+than silently ignored, so a hallucinated "danceability" shows up instead of
+doing nothing.

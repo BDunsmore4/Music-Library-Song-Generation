@@ -32,6 +32,8 @@ import time
 
 from flask import Blueprint, jsonify, request
 
+import llm
+
 bp = Blueprint("chat", __name__)
 
 SESSION_TTL = int(os.environ.get("CHAT_SESSION_TTL", 60 * 60))
@@ -157,13 +159,16 @@ def chat_config():
         return jsonify({"error": "crate unavailable: %s" % e}), 503
     dropped = sorted(n for n, r in cc.crate.axis_report.items()
                      if r.get("verdict") == "failed")
+    info = llm.describe()
     return jsonify({
         "tracks": cc.crate.n,
         "axes": cc.crate.axis_names(),
         "axes_dropped": dropped,
         "adapter": cc.crate._adapter is not None,
-        "live": bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "model": cc.model,
+        "live": bool(info.get("configured")),
+        "backend": info.get("backend"),
+        "model": info.get("model"),
+        "base_url": info.get("base_url"),
     })
 
 
@@ -186,8 +191,9 @@ def chat():
     sid = body.get("session")
     if not message:
         return jsonify({"error": "no message"}), 400
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        return jsonify({"error": "server not configured for chat"}), 503
+    if not llm.describe().get("configured"):
+        return jsonify({"error": "no LLM backend configured — set LLM_BACKEND "
+                                 "and LLM_BASE_URL/LLM_API_KEY"}), 503
 
     cc = _session(sid) if sid else None
     if cc is None:

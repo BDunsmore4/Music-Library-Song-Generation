@@ -7,9 +7,12 @@ something for cooking on a rainy Sunday" into sound descriptions, spotting that
 `groove` axis. The retrieval maths stays in crate.py, deterministic and
 testable, and Claude never sees a vector or invents a score.
 
+The model is pluggable — see llm.py. Claude, or any OpenAI-compatible endpoint
+with tool support (Groq, Together, Fireworks, OpenRouter, vLLM, llama.cpp,
+Ollama), chosen with LLM_BACKEND. Nothing in this file is vendor-specific.
+
 Run it:
-    pip install anthropic
-    export ANTHROPIC_API_KEY=...
+    export LLM_BACKEND=openai LLM_BASE_URL=http://localhost:11434/v1 LLM_MODEL=qwen3:14b
     python crate_chat.py                      # interactive
     python crate_chat.py --demo               # scripted dialogue, no key needed
                                               # for the tool layer itself
@@ -24,8 +27,9 @@ import os
 import sys
 
 import crate
+import llm
 
-MODEL = os.environ.get("CRATE_MODEL", "claude-sonnet-5")
+MODEL = os.environ.get("CRATE_MODEL", "").strip()
 MAX_TURNS = int(os.environ.get("CRATE_MAX_TOOL_TURNS", 6))
 
 SYSTEM = """You are a crate-digging assistant for one person's personal music \
@@ -282,12 +286,13 @@ def _fmt(results):
 class CrateChat(object):
     """Holds one Crate, one Session and the message history."""
 
-    def __init__(self, crate_model=None, model=MODEL):
+    def __init__(self, crate_model=None, model=None):
         self.crate = crate_model or crate.Crate()
         self.session = self.crate.new_session()
-        self.model = model
+        self.model = model if model is not None else MODEL
         self.messages = []
         self.last_results = []      # structured results from the most recent tool call
+        self._searched = False      # has any search happened in this conversation
         self._client = None
 
     def system_prompt(self):
@@ -350,33 +355,58 @@ class CrateChat(object):
             return dict(error="%s: %s" % (type(e).__name__, e))
 
     # -- the loop ------------------------------------------------------------
-    def _client_or_die(self):
+    def _backend(self):
         if self._client is None:
-            import anthropic
-            self._client = anthropic.Anthropic()
+            self._client = llm.get_backend(model=self.model or None)
         return self._client
 
     def say(self, user_text, verbose=True):
-        """One user turn: run the tool loop until Claude stops calling tools."""
-        client = self._client_or_die()
-        self.messages.append({"role": "user", "content": user_text})
-        for _ in range(MAX_TURNS):
-            resp = client.messages.create(
-                model=self.model, max_tokens=1200,
-                system=self.system_prompt(), tools=TOOLS,
-                messages=self.messages)
-            self.messages.append({"role": "assistant", "content": resp.content})
-            calls = [b for b in resp.content if getattr(b, "type", "") == "tool_use"]
-            if not calls:
-                return "".join(b.text for b in resp.content
-                               if getattr(b, "type", "") == "text")
+        """One user turn: run the tool loop until the model stops calling tools.
+
+        `force_tool` is set on the opening turn of a conversation. Smaller
+        open-weights models will otherwise happily reply "sure, what sort of
+        mood are you in?" without searching anything, which wastes the turn;
+        requiring a call gets tracks on screen. If the backend ignores that and
+        still returns no call, the fallback below searches on the raw message
+        rather than returning a contentless reply.
+        """
+        backend = self._backend()
+        self.messages.append(llm.user(user_text))
+        opening = not self._searched
+
+        for attempt in range(MAX_TURNS):
+            reply = backend.complete(self.system_prompt(), self.messages, TOOLS,
+                                     force_tool=(opening and attempt == 0))
+            self.messages.append(llm.assistant(reply))
+
+            if not reply.tool_calls:
+                if opening and attempt == 0:
+                    # The model would not call a tool. Do the obvious thing
+                    # ourselves so the user gets music, and tell the model what
+                    # happened so its next sentence is about real tracks.
+                    out = self.call_tool("search_by_description",
+                                         {"descriptions": [user_text], "k": 3})
+                    self.messages.append(llm.tool_result(
+                        llm.ToolCall("fallback", "search_by_description", {}), out))
+                    if verbose:
+                        print("   [fallback: model called no tool; searched on "
+                              "the raw message]")
+                    continue
+                return reply.text or "(no reply)"
+
             results = []
-            for b in calls:
+            for c in reply.tool_calls:
                 if verbose:
-                    print("   [%s %s]" % (b.name, json.dumps(b.input)[:150]))
-                results.append({"type": "tool_result", "tool_use_id": b.id,
-                                "content": json.dumps(self.call_tool(b.name, b.input))})
-            self.messages.append({"role": "user", "content": results})
+                    print("   [%s %s]" % (c.name, json.dumps(c.args)[:150]))
+                if c.bad_args:
+                    payload = {"error": c.bad_args,
+                               "hint": "re-issue the call with valid JSON arguments"}
+                else:
+                    payload = self.call_tool(c.name, c.args)
+                    self._searched = True
+                results.append(llm.tool_result(c, payload))
+            self.messages.extend(results)
+
         return "(stopped: too many tool turns)"
 
     def trail(self):
