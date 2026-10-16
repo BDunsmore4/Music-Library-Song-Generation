@@ -410,7 +410,31 @@ window.crateSpace = {
 };
 addEventListener('blur',()=>{Object.keys(keys).forEach(k=>delete keys[k]);dragging=false;});
 if(embedded) $('#gate').classList.add('hidden');
-load().then(()=>{window.crateSpace.ready=true;frame();}).catch(()=>{
+// ── Where the flight starts ────────────────────────────────────────────────
+// Not the origin. (0,0,320) put you in the middle of everything with no sense
+// of being anywhere, whereas this corner of the cloud has 1,109 tracks within
+// 150 units — the dense pale region you actually want to open on. Anchored to
+// a named track rather than hardcoded coordinates so it survives a re-layout
+// of the map; override with ?start=<part of a track name> to try another.
+const START_TRACK='Firebird, K10, Suite (Arr. Agosti for Piano): III';
+const START_BACK_OFF=260;        // how far behind the track the camera sits
+
+function setStartView(){
+  const want=(new URLSearchParams(location.search).get('start')||START_TRACK).toLowerCase();
+  const anchor=POINTS.find(p=>(p.name||'').toLowerCase().includes(want));
+  if(!anchor) return;                                   // fall back to the old start
+  const t=new THREE.Vector3(anchor.x,anchor.y,anchor.z);
+  // Sit behind the anchor relative to the centre of the cloud, so the track is
+  // just ahead and the bulk of the library is beyond it.
+  const away=t.clone().normalize();                      // the cloud is centred on 0
+  camera.position.copy(t).add(away.multiplyScalar(START_BACK_OFF));
+  const m=new THREE.Matrix4().lookAt(camera.position,t,new THREE.Vector3(0,1,0));
+  const e=new THREE.Euler().setFromQuaternion(
+    new THREE.Quaternion().setFromRotationMatrix(m),'YXZ');
+  yaw=e.y; pitch=e.x;
+}
+
+load().then(()=>{setStartView();window.crateSpace.ready=true;frame();}).catch(()=>{
   window.crateSpace.error=true;
   $('#gate').classList.remove('hidden');
   $('#gate p').textContent='The song constellation could not load. Please reload to try again.';
