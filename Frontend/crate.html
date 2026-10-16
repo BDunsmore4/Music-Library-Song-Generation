@@ -114,16 +114,16 @@ body{overflow:hidden}
 #space-layer{position:fixed;inset:0;width:100%;height:100%;border:0;z-index:0;background:#0a0d14}
 #glass-pane{position:fixed;inset:0;z-index:2;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
 #glass-pane main{min-height:0}
-#cracks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;filter:drop-shadow(0 1px 1px #000)}
+#cracks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;filter:none}
 .reveal-tools{max-width:680px;margin:9px auto 0;display:flex;justify-content:flex-end;gap:10px;align-items:center}
 .reveal-tools button,#strike,#return-chat{font:inherit;color:var(--text);border:1px solid var(--border-2);background:var(--surface-2);border-radius:6px;padding:9px 13px;cursor:pointer}
 #reveal-status{font-size:11px;color:#aab7ca}
 #tool-rig{position:fixed;right:24px;bottom:150px;z-index:8;display:none;text-align:center}
 #tool-rig svg{display:block;width:150px;height:150px;overflow:visible;filter:drop-shadow(0 8px 8px #0008)}
 #tool-rig.equipped{display:block}
-#hammer{transform-origin:112px 119px}
+#hammer{transform-origin:115px 124px}
 #tool-rig.swing #hammer{animation:hammer-strike .32s ease-in-out}
-@keyframes hammer-strike{0%{transform:rotate(0)}35%{transform:rotate(38deg)}65%{transform:rotate(-28deg)}100%{transform:rotate(0)}}
+@keyframes hammer-strike{0%{transform:rotate(0)}38%{transform:rotate(32deg)}58%{transform:rotate(-13deg)}70%{transform:rotate(-5deg)}82%{transform:rotate(-10deg)}100%{transform:rotate(0)}}
 #return-chat{position:fixed;right:18px;top:48px;z-index:9}
 #shards{position:fixed;inset:0;z-index:7;pointer-events:none;overflow:hidden;perspective:1000px}
 .glass-shard{position:absolute;inset:0;will-change:transform,opacity;pointer-events:none}
@@ -162,10 +162,29 @@ body{overflow:hidden}
 </div>
 <div id="tool-rig">
   <svg viewBox="0 0 160 150" aria-hidden="true">
-    <defs><linearGradient id="steel"><stop stop-color="#718096"/><stop offset=".45" stop-color="#eef6ff"/><stop offset="1" stop-color="#687b94"/></linearGradient></defs>
-    <path d="M29 134 L49 74 L61 78 L34 137Z" fill="url(#steel)" stroke="#c7d5e6"/>
-    <path d="M47 76 L52 57 L68 62 L61 81Z" fill="#b47c48" stroke="#e4b580"/>
-    <g id="hammer"><path d="M107 126 L68 57 L79 50 L119 119Z" fill="#ae7544" stroke="#edbd85" stroke-width="2"/><path d="M45 37 Q42 31 49 28 L88 15 Q94 14 97 22 L102 37 Q104 44 98 46 L60 61 Q53 63 51 56Z" fill="url(#steel)" stroke="#e7effc" stroke-width="2"/></g>
+    <defs>
+      <linearGradient id="steel" x1="0" y1="0" x2="1" y2=".25"><stop stop-color="#303842"/><stop offset=".2" stop-color="#8e969a"/><stop offset=".38" stop-color="#f6f5ed"/><stop offset=".47" stop-color="#a8afb0"/><stop offset=".8" stop-color="#525e65"/><stop offset="1" stop-color="#222b32"/></linearGradient>
+      <linearGradient id="face" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#e3e5dc"/><stop offset=".45" stop-color="#8e999e"/><stop offset="1" stop-color="#39434c"/></linearGradient>
+      <linearGradient id="wood"><stop stop-color="#382013"/><stop offset=".25" stop-color="#89552e"/><stop offset=".5" stop-color="#c18d52"/><stop offset=".7" stop-color="#9e6937"/><stop offset="1" stop-color="#422819"/></linearGradient>
+      <linearGradient id="grip"><stop stop-color="#161e23"/><stop offset=".4" stop-color="#596065"/><stop offset=".7" stop-color="#2c353c"/><stop offset="1" stop-color="#11171c"/></linearGradient>
+    </defs>
+    <!-- A beveled steel chisel: its cutting edge is the actual fracture origin. -->
+    <path d="M29 135 L44 72 L53 75 L33 137Z" fill="url(#steel)" stroke="#171e24" stroke-width=".8"/>
+    <path d="M29 135 L48 74 L50 75 L33 137Z" fill="#edf4f4" opacity=".65"/>
+    <path d="M29 135 L33 137 L30 140Z" fill="#e1e9e8"/>
+    <path d="M43 77 L49 53 Q50 49 55 51 L63 54 Q66 55 64 60 L56 81Z" fill="url(#grip)" stroke="#798288" stroke-width=".6"/>
+    <path d="M47 63 L61 67 M46 68 L59 72 M45 73 L57 77" stroke="#090f15" stroke-width="2"/>
+    <path d="M49 53 L51 47 L67 52 L65 58Z" fill="url(#steel)" stroke="#b8c4c7" stroke-width=".7"/>
+    <g id="hammer">
+      <path d="M68 46 Q70 42 76 46 L120 120 Q122 126 116 129 L110 129Z" fill="url(#wood)" stroke="#36271e" stroke-width="1.3"/>
+      <path d="M75 55 Q90 89 114 123 M72 57 Q84 88 107 119 M79 58 L114 116" fill="none" stroke="#452e1d" stroke-width=".7" opacity=".6"/>
+      <path d="M110 126 L118 122" stroke="#d5a96b" stroke-width="1.4"/>
+      <path d="M39 29 L85 13 Q91 11 94 18 L101 37 Q103 43 97 46 L52 62Z" fill="url(#steel)" stroke="#252e36" stroke-width="1"/>
+      <path d="M39 29 L47 29 L59 58 L52 62 L39 57 L33 37Z" fill="url(#face)" stroke="#c6cdce" stroke-width=".8"/>
+      <path d="M39 29 L85 13 L91 16 L47 33Z" fill="#e4e7e3" opacity=".8"/>
+      <path d="M59 58 L97 44 L101 37 L62 50Z" fill="#202a32" opacity=".55"/>
+      <path d="M55 34 L81 25 M60 39 L91 28 M67 44 L90 36 M43 38 L48 51" stroke="#eef3ed" stroke-width=".5" opacity=".35"/>
+    </g>
   </svg>
   <button id="strike" type="button">Strike · Space</button>
 </div>
@@ -391,39 +410,83 @@ function equipTools(){
   addMessage('bot', 'Here’s your hammer and chisel. Five strikes will open the space behind the chat. Press Space, or tap Strike.');
   input.blur(); strikeButton.focus();
 }
-function growCracks(){
-  // Normalised coordinates keep existing fractures intact when the screen resizes.
-  const ox=790, oy=690;
+// Seeded fractures are continuous across hits; no repeating sine-wave teeth.
+let fractureRays = [], impact = null, fractureSeed = 92417;
+function fractureRandom(){fractureSeed=(Math.imul(fractureSeed,1664525)+1013904223)>>>0;return fractureSeed/4294967296;}
+function glassLine(points,width,alpha){
   const ns='http://www.w3.org/2000/svg';
-  const path=(points, width, opacity)=>{
+  const add=(stroke,w,opacity,dx=0,dy=0)=>{
     const p=document.createElementNS(ns,'polyline');
-    p.setAttribute('points',points.map(p=>p.join(',')).join(' '));
-    p.setAttribute('fill','none');p.setAttribute('stroke','#d8ecff');
-    p.setAttribute('stroke-width',width);p.setAttribute('opacity',opacity);
-    p.setAttribute('vector-effect','non-scaling-stroke');cracks.appendChild(p);
+    p.setAttribute('points',points.map(([x,y])=>`${x+dx},${y+dy}`).join(' '));
+    p.setAttribute('fill','none');p.setAttribute('stroke',stroke);
+    p.setAttribute('stroke-width',w);p.setAttribute('opacity',opacity);
+    p.setAttribute('stroke-linejoin','bevel');p.setAttribute('vector-effect','non-scaling-stroke');
+    cracks.appendChild(p);
   };
-  for(let ray=0;ray<12;ray++){
-    const angle=ray*Math.PI/6+.16*Math.sin(ray*7);
-    const start=(hits-1)*150, end=hits*150;
-    const pts=[];
-    for(let r=start;r<=end;r+=15){
-      const wobble=Math.sin(r*.13+ray*4)*10;
-      pts.push([ox+Math.cos(angle)*r-Math.sin(angle)*wobble,oy+Math.sin(angle)*r+Math.cos(angle)*wobble]);
-    }
-    path(pts, hits===1?1.5:1,.85);
-    const b=pts[5], a=angle+(ray%2? .55:-.6);
-    path([b,[b[0]+Math.cos(a)*38,b[1]+Math.sin(a)*38],[b[0]+Math.cos(a+.2)*85,b[1]+Math.sin(a+.2)*85]],.65,.6);
-    if(ray>0 && hits>1){
-      const r=start+65;
-      path([[ox+Math.cos(angle)*r,oy+Math.sin(angle)*r],[ox+Math.cos(angle-.25)*(r+20),oy+Math.sin(angle-.25)*(r+20)],[ox+Math.cos(angle-.52)*r,oy+Math.sin(angle-.52)*r]],.6,.4);
+  // Dark cut with a narrow, offset reflective edge gives the glass thickness.
+  add('#02060a',width+1.05,alpha*.8);
+  add('#d4e6e8',width,alpha,.48,-.38);
+  if(width>.75)add('#ffffff',.35,alpha*.75,.9,-.6);
+}
+function growCracks(){
+  const rand=fractureRandom;
+  if(!impact){
+    const r=rig.querySelector('svg').getBoundingClientRect();
+    impact={x:(r.left+r.width*30/160)/innerWidth*1000,y:(r.top+r.height*140/150)/innerHeight*1000};
+    for(let i=0;i<19;i++){
+      const angle=(i+rand()*.7)*Math.PI*2/19;
+      fractureRays.push({angle,x:impact.x,y:impact.y,reach:0,weight:.35+rand()*.65});
     }
   }
+  // Work in viewport pixels so fractures don't stretch on wide screens.
+  const sx=1000/innerWidth,sy=1000/innerHeight;
+  const maxReach=Math.hypot(innerWidth,innerHeight);
+  const lengths=[0,.12,.3,.53,.85,1.2];
+  for(const ray of fractureRays){
+    const target=maxReach*lengths[hits]*(.65+ray.weight*.45);
+    const pts=[[ray.x,ray.y]];
+    while(ray.reach<target){
+      const step=12+rand()*35;
+      const a=ray.angle+(rand()-.5)*.38;
+      const old=[ray.x,ray.y];
+      ray.x+=Math.cos(a)*step*sx;ray.y+=Math.sin(a)*step*sy;ray.reach+=step;
+      pts.push([ray.x,ray.y]);
+      if(rand()<.39){
+        let bx=old[0],by=old[1],ba=a+(rand()<.5?-1:1)*(.25+rand()*.65);
+        const branch=[[bx,by]],steps=2+Math.floor(rand()*7);
+        for(let j=0;j<steps;j++){
+          ba+=(rand()-.5)*.3;const len=7+rand()*20;
+          bx+=Math.cos(ba)*len*sx;by+=Math.sin(ba)*len*sy;branch.push([bx,by]);
+          if(j===2&&rand()<.5)glassLine([[bx,by],[bx+Math.cos(ba+.7)*30*sx,by+Math.sin(ba+.7)*30*sy]],.22,.28);
+        }
+        glassLine(branch,.2+rand()*.35,.2+rand()*.38);
+      }
+    }
+    glassLine(pts,.35+ray.weight*.55,.4+ray.weight*.35);
+  }
+  // Broken circumferential arcs and tiny crushed facets surround the strike.
+  for(let ring=0;ring<5;ring++){
+    const radius=(8+ring*14)*(1+(hits-1)*.22);
+    let pts=[];
+    for(let i=0;i<=35;i++){
+      const a=i*Math.PI*2/35,r=radius*(.78+rand()*.38);
+      pts.push([impact.x+Math.cos(a)*r*sx,impact.y+Math.sin(a)*r*sy]);
+      if(rand()<.2||i===35){if(pts.length>1)glassLine(pts,.25+rand()*.45,.25+rand()*.35);pts=[];}
+    }
+  }
+  for(let i=0;i<35;i++){
+    const a=rand()*Math.PI*2,r=rand()**2*43*hits/2,x=impact.x+Math.cos(a)*r*sx,y=impact.y+Math.sin(a)*r*sy;
+    glassLine([[x,y],[x+(rand()*4+1)*sx,y-rand()*3*sy],[x+rand()*6*sx,y+rand()*3*sy]],.3,.2+rand()*.65);
+  }
 }
+function impactFeedback(){
+  if(!reducedMotion.matches)pane.animate([{transform:'translate(0,0)'},{transform:'translate(1.6px,1px)'},{transform:'translate(-1px,0)'},{transform:'translate(0,0)'}],{duration:140});
+}
+
 async function shatter(){
   revealState='breaking'; rig.classList.remove('equipped');
   if(audio) audio.pause();
-  // Same-origin bridge keeps audio activation within the fifth user gesture.
-  space.contentWindow.crateSpace.enter();
+  // Audio is unlocked by the fifth strike before its impact animation.
   pane.inert=true;
   const shards=document.getElementById('shards');
   if(!reducedMotion.matches){
@@ -431,7 +494,8 @@ async function shatter(){
     const animations=[];
     for(let i=0;i<16;i++){
       const a=i*Math.PI/8, b=(i+1)*Math.PI/8;
-      const poly=`polygon(79% 69%, ${79+180*Math.cos(a)}% ${69+180*Math.sin(a)}%, ${79+180*Math.cos(b)}% ${69+180*Math.sin(b)}%)`;
+      const cx=impact.x/10,cy=impact.y/10;
+      const poly=`polygon(${cx}% ${cy}%, ${cx+180*Math.cos(a)}% ${cy+180*Math.sin(a)}%, ${cx+180*Math.cos(b)}% ${cy+180*Math.sin(b)}%)`;
       const shard=document.createElement('div');shard.className='glass-shard';shard.style.clipPath=poly;
       const copy=pane.cloneNode(true);copy.inert=true;
       copy.querySelectorAll('textarea').forEach(t=>t.value=input.value);
@@ -456,8 +520,13 @@ function strike(){
   if(hits===4&&!bridge?.ready){statusLine.textContent=bridge?.error ? 'The constellation could not load. Reload the page to try again.' : 'The constellation is still loading. Try the final strike shortly.';return;}
   lastStrike=performance.now();hits++;
   rig.classList.remove('swing');void rig.offsetWidth;rig.classList.add('swing');
-  growCracks();statusLine.textContent=`${hits} / 5 strikes`;
-  if(hits===5)shatter();
+  // Reserve the fifth strike now; apply the damage when the hammer lands.
+  if(hits===5){
+    revealState='impact';
+    if(audio)audio.pause();
+    space.contentWindow.crateSpace.enter();
+  }
+  setTimeout(()=>{growCracks();impactFeedback();statusLine.textContent=`${hits} / 5 strikes`;if(hits===5)shatter();}, reducedMotion.matches?0:185);
 }
 document.getElementById('equip').onclick=equipTools;
 strikeButton.onclick=strike;
@@ -470,6 +539,7 @@ returnButton.onclick=()=>{
   space.contentWindow.crateSpace.pause();space.inert=true;space.tabIndex=-1;
   returnButton.hidden=true;pane.hidden=false;pane.inert=false;
   hits=0;lastStrike=-Infinity;revealState='chat';cracks.replaceChildren();
+  fractureRays=[];impact=null;fractureSeed=92417;
   document.getElementById('equip').disabled=false;
   statusLine.textContent='There’s a world behind this conversation.';
   document.getElementById('equip').focus();
