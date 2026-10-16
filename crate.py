@@ -829,6 +829,89 @@ class Crate(object):
                                  else str(r.get("preview_url"))),
                     profile=self.profile(j), row=j), len(rows)
 
+    # -- does a set of tracks split into distinct sounds? -------------------
+    def cluster(self, artist=None, track_ids=None, max_k=5, session=None):
+        """Find whether a set of tracks is one sound or several, and name the
+        difference.
+
+        This is what lets "more like Radiohead" stop being a blurry average.
+        Averaging an artist's catalogue into one centroid silently assumes they
+        are coherent; many are not, and for those the mean is a point no track
+        of theirs actually occupies. Clustering first lets the assistant ask
+        which end is meant.
+
+        With no artist and no ids, clusters the whole library and marks the
+        groups this conversation has not drawn from — which is a far better
+        answer to "something completely different" than distance alone, because
+        distance from a jazz query is just a random other genre.
+
+        Returns {n, splits, silhouette, groups:[{size, tracks, higher, lower}]}.
+        """
+        from sklearn.cluster import KMeans
+        from sklearn.metrics import silhouette_score
+
+        if artist:
+            rows = self._artist_rows(artist)
+            scope = artist
+        elif track_ids:
+            rows = self._rows_for_ids(track_ids)
+            scope = "%d tracks" % len(rows)
+        else:
+            rows = list(range(self.n))
+            scope = "the whole library"
+        rows = [int(r) for r in rows]
+        if len(rows) < 6:
+            return dict(scope=scope, n=len(rows), splits=False,
+                        note="too few tracks to cluster meaningfully",
+                        groups=[])
+
+        V = self.X[rows]
+        best = (1, -1.0, None)
+        for k in range(2, min(max_k, len(rows) - 1) + 1):
+            lab = KMeans(n_clusters=k, n_init=6, random_state=0).fit_predict(V)
+            if len(set(lab)) < 2:
+                continue
+            sc = float(silhouette_score(V, lab, metric="cosine"))
+            if sc > best[1]:
+                best = (k, sc, lab)
+        k, sil, lab = best
+        # 0.10 is low by textbook standards and deliberately so: these are
+        # dense audio embeddings, not well-separated blobs, and a real stylistic
+        # split in one artist's work shows up as a modest but consistent score.
+        splits = lab is not None and sil >= 0.10
+        if not splits:
+            return dict(scope=scope, n=len(rows), splits=False,
+                        silhouette=round(sil, 3) if lab is not None else None,
+                        note="one coherent sound; no useful split", groups=[])
+
+        seen_rows = set(session.seen) if session is not None else set()
+        groups = []
+        for c in sorted(set(lab)):
+            idx = [rows[i] for i in range(len(rows)) if lab[i] == c]
+            others = [rows[i] for i in range(len(rows)) if lab[i] != c]
+            cen = unit(self.X[idx].mean(0))
+            reps = [idx[i] for i in np.argsort(-(self.X[idx] @ cen))[:3]]
+            # name the difference using the validated axes, so the assistant can
+            # say *how* the groups differ instead of just that they do
+            diffs = []
+            for a, d in self.axes.items():
+                mine = float((self.X[idx] @ d).mean())
+                rest = float((self.X[others] @ d).mean()) if others else 0.0
+                sd = float((self.X[rows] @ d).std()) or 1.0
+                diffs.append((a, (mine - rest) / sd))
+            diffs.sort(key=lambda t: -abs(t[1]))
+            top = [t for t in diffs if abs(t[1]) >= 0.35][:3]
+            groups.append(dict(
+                size=len(idx),
+                tracks=[dict(track_id=str(self.meta.id[j]),
+                             name=str(self.meta.name[j]),
+                             artist=str(self.meta.artists[j])) for j in reps],
+                higher=[a for a, v in top if v > 0],
+                lower=[a for a, v in top if v < 0],
+                visited=bool(set(idx) & seen_rows)))
+        return dict(scope=scope, n=len(rows), splits=True,
+                    silhouette=round(sil, 3), groups=groups)
+
     def present(self, session, track_ids):
         """Set exactly what the user is shown, in this order. No wildcard.
 

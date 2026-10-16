@@ -135,6 +135,26 @@ classical it is the date of the performance, so never use a year range for a
 repertoire era — use the genre tags, which include "Baroque Era" and
 "Romantic Era".
 
+WHEN AN ARTIST IS NOT ONE SOUND
+
+Averaging an artist's catalogue assumes they are coherent, and plenty are not —
+the mean of a wide catalogue is a point none of their tracks occupies. Before
+leaning hard on a reference, `cluster` that artist. If it splits, say so and
+ask which end they mean, naming each group by a track they will recognise and
+by how the groups differ:
+
+  "Alfa Mist spans a few things here — the groovier, harder-edged side
+   (Keep On, Foreword) or the more electronic, sparser side (Variables)?"
+
+Do not do this for every artist; a coherent catalogue needs no question. Do it
+when the catalogue is large or when a first attempt came back scattered.
+
+`cluster` with no argument groups the whole library and marks which groups this
+conversation has not touched. That is the real answer to "play me something
+completely different" — distance alone just gives a random other genre,
+whereas an unvisited dense region is somewhere they actually have music and
+have not been.
+
 COMBINING WHAT YOU KNOW WITH WHAT THE AUDIO SAYS
 
 CLAP cannot read a genre name, but you know which artists belong to one. That \
@@ -358,6 +378,25 @@ TOOLS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "cluster",
+        "description": (
+            "Ask whether a set of tracks is one sound or several, and how they "
+            "differ. Give an artist to check whether their catalogue is "
+            "coherent before you average it — 'more like Radiohead' is a blurry "
+            "query if they span several sounds, and you should ask which end is "
+            "meant. Give track_ids to examine a result set. Give neither to "
+            "cluster the whole library, which also marks the groups this "
+            "conversation has not drawn from — the honest answer to 'something "
+            "completely different'."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "artist": {"type": "string"},
+                "track_ids": {"type": "array", "items": {"type": "string"}},
+            },
+        },
+    },
+    {
         "name": "present",
         "description": (
             "Decide exactly what the user is shown, in your chosen order. Pass "
@@ -545,6 +584,10 @@ class CrateChat(object):
 
             if name == "library_overview":
                 return c.overview()
+
+            if name == "cluster":
+                return c.cluster(artist=args.get("artist"),
+                                 track_ids=args.get("track_ids"), session=s)
 
             if name == "present":
                 shown = c.present(s, args.get("track_ids") or [])

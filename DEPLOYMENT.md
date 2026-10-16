@@ -534,3 +534,33 @@ returns Handel and the Goldberg Variations.
 Genre tags are commercial categories, not musicology, and sometimes very
 coarse — Graceland is filed under "Worldwide". Treat them as a usable filter,
 not a taxonomy.
+
+### cluster(): when an artist is not one sound
+
+Averaging a catalogue assumes the artist is coherent. Plenty are not, and for
+those the mean is a point none of their tracks occupies — so "more like X" is a
+blurry query and the results are a compromise nobody asked for.
+
+`cluster(artist=…)` k-means over that artist's embeddings, picks k by
+silhouette, and names each group by its three most representative tracks plus
+the validated axes on which it differs from the rest. The threshold is 0.10,
+low by textbook standards and deliberately: dense audio embeddings are not
+well-separated blobs, and a real stylistic split shows up as a modest but
+consistent score.
+
+It finds musically real divisions:
+
+| artist | n | silhouette | split |
+|---|---|---|---|
+| Beethoven | 184 | 0.571 | string quartets (82) vs piano sonatas and symphonies (102) |
+| AC/DC | 10 | 0.469 | full-throttle (8) vs Hells Bells, Rock and Roll Ain't Noise Pollution |
+| Fergus McCreadie | 27 | 0.394 | instrumental trio (21) vs the more vocal tracks (6) |
+| Alfa Mist | 34 | 0.377 | five groups, separating the jazz-hop from the electronic |
+| Michael Jackson | 4 | — | declines: too few tracks to cluster |
+
+With no argument it clusters the whole library and marks which groups the
+conversation has not drawn from. That is the honest answer to "play me
+something completely different": distance alone just returns a random other
+genre, whereas an unvisited dense region is somewhere they actually have music
+and have not been. After a solo-piano search, three of the four groups come
+back unvisited.
