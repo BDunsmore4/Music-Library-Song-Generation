@@ -185,6 +185,7 @@ def _public(results):
                         preview_url=r.get("preview_url"),
                         wildcard=bool(r.get("wildcard")),
                         profile=r.get("profile") or {},
+                        isolation=r.get("isolation"),
                         relevance=(1.0 if uniform
                                    else round(0.15 + 0.85 * (sc - lo) / span, 3)),
                         x=xy[0], y=xy[1],

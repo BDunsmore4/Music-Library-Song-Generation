@@ -400,6 +400,8 @@ class Crate(object):
         self._name_norm = self.meta["name"].astype(str).map(_norm_name)
         self._reducer = None
         self._axis_pct = None
+        self._iso = None
+        self._libclust = None
         self._nn_ref = None
         self.last_fit = None
         self.last_results = []
@@ -580,7 +582,8 @@ class Crate(object):
                             preview_url=(None if str(row.get("preview_url")) == "nan"
                                          else str(row.get("preview_url"))),
                             score=round(float(s[j]), 4), row=j,
-                            profile=self.profile(j)))
+                            profile=self.profile(j),
+                            isolation=self.isolation_pct(j)))
             if len(out) >= k:
                 break
         for r in out:
@@ -623,7 +626,7 @@ class Crate(object):
                     preview_url=(None if str(row.get("preview_url")) == "nan"
                                  else str(row.get("preview_url"))),
                     score=round(float(s[j]), 4), row=j, wildcard=True,
-                    profile=self.profile(j),
+                    profile=self.profile(j), isolation=self.isolation_pct(j),
                     rank=int(np.where(order == j)[0][0]))
 
     def _commit(self, session, q, label, k, exclude=(), kind="audio", op=None,
@@ -784,7 +787,8 @@ class Crate(object):
                                  preview_url=(None if str(r.get("preview_url")) == "nan"
                                               else str(r.get("preview_url"))),
                                  matched=why, row=j, score=1.0,
-                                 profile=self.profile(j)))
+                                 profile=self.profile(j),
+                                 isolation=self.isolation_pct(j)))
         for a in (artists or []):
             t = _norm_name(a)
             per.setdefault(a, 0)
@@ -829,6 +833,59 @@ class Crate(object):
                                  else str(r.get("preview_url"))),
                     profile=self.profile(j), row=j), len(rows)
 
+    # -- how unusual is a track? -------------------------------------------
+    def _isolation(self, k=10, chunk=512):
+        """Mean cosine to each track's k nearest neighbours. Lower = stranger.
+
+        Deliberately k-NN rather than the single nearest neighbour, which is
+        the obvious choice and the fragile one: a track with a live version,
+        a remaster or a double entry has a neighbour at cos ~1.0 and can never
+        rank as unusual however strange it is. Averaging over ten also stops a
+        pair of mutually-weird tracks hiding each other — Romitelli's
+        movements only surface as outliers under k-NN, because under nearest-
+        neighbour they are each other's company.
+
+        Chunked because the full 7,106 x 7,106 similarity matrix is 200MB; this
+        holds 512 rows at a time. Computed once, lazily.
+        """
+        if getattr(self, "_iso", None) is not None:
+            return self._iso
+        iso = np.empty(self.n, dtype="float32")
+        kk = min(k, self.n - 1)
+        for a in range(0, self.n, chunk):
+            b = min(a + chunk, self.n)
+            S = self.X[a:b] @ self.X.T
+            S[np.arange(b - a), np.arange(a, b)] = -np.inf   # not its own neighbour
+            # partition on -S puts the kk largest cosines first; the leading
+            # minus restores them to actual cosines. Negating again here is
+            # what inverted the whole ranking first time round.
+            top = -np.partition(-S, kk, axis=1)[:, :kk]
+            iso[a:b] = top.mean(1)
+        self._iso = iso
+        return iso
+
+    def isolation_pct(self, row):
+        """0-100, where 100 is the strangest thing in the library."""
+        iso = self._isolation()
+        return int(round(100.0 * float((iso > iso[row]).mean())))
+
+    def outliers(self, limit=8, typical=False):
+        """The strangest tracks in the library — or, with typical=True, the most
+        representative. Answers "surprise me with the most unusual track", which
+        previously had no tool and had to be improvised with a search wildcard.
+        """
+        iso = self._isolation()
+        order = np.argsort(iso if not typical else -iso)[:max(1, min(limit, 50))]
+        return dict(measure="mean cosine to the 10 nearest neighbours",
+                    ranking="most unusual first" if not typical
+                            else "most representative first",
+                    tracks=[dict(track_id=str(self.meta.id[int(j)]),
+                                 name=str(self.meta.name[int(j)]),
+                                 artist=str(self.meta.artists[int(j)]),
+                                 isolation=self.isolation_pct(int(j)),
+                                 nearest_cos=round(float(iso[int(j)]), 3))
+                            for j in order])
+
     # -- does a set of tracks split into distinct sounds? -------------------
     def cluster(self, artist=None, track_ids=None, max_k=5, session=None):
         """Find whether a set of tracks is one sound or several, and name the
@@ -847,7 +904,7 @@ class Crate(object):
 
         Returns {n, splits, silhouette, groups:[{size, tracks, higher, lower}]}.
         """
-        from sklearn.cluster import KMeans
+        from sklearn.cluster import KMeans, MiniBatchKMeans
         from sklearn.metrics import silhouette_score
 
         if artist:
@@ -865,16 +922,32 @@ class Crate(object):
                         note="too few tracks to cluster meaningfully",
                         groups=[])
 
-        V = self.X[rows]
-        best = (1, -1.0, None)
-        for k in range(2, min(max_k, len(rows) - 1) + 1):
-            lab = KMeans(n_clusters=k, n_init=6, random_state=0).fit_predict(V)
-            if len(set(lab)) < 2:
-                continue
-            sc = float(silhouette_score(V, lab, metric="cosine"))
-            if sc > best[1]:
-                best = (k, sc, lab)
-        k, sil, lab = best
+        whole = artist is None and not track_ids
+        if whole and self._libclust is not None:
+            k, sil, lab = self._libclust          # the library does not change
+        else:
+            V = self.X[rows]
+            big = len(rows) > 2000
+            best = (1, -1.0, None)
+            for k in range(2, min(max_k, len(rows) - 1) + 1):
+                km = (MiniBatchKMeans(n_clusters=k, n_init=3, random_state=0,
+                                      batch_size=1024)
+                      if big else KMeans(n_clusters=k, n_init=6, random_state=0))
+                lab = km.fit_predict(V)
+                if len(set(lab)) < 2:
+                    continue
+                # silhouette_score builds the full pairwise distance matrix, so
+                # on the whole library it is O(n^2) — 50 million pairs, per k.
+                # Sampling makes it a fraction of a second at no real cost to
+                # the ranking, which is all it is used for.
+                sc = float(silhouette_score(V, lab, metric="cosine",
+                                            sample_size=min(1500, len(rows)),
+                                            random_state=0))
+                if sc > best[1]:
+                    best = (k, sc, lab)
+            k, sil, lab = best
+            if whole:
+                self._libclust = (k, sil, lab)
         # 0.10 is low by textbook standards and deliberately so: these are
         # dense audio embeddings, not well-separated blobs, and a real stylistic
         # split in one artist's work shows up as a modest but consistent score.
@@ -935,7 +1008,8 @@ class Crate(object):
                             artist=str(r["artists"]), album=str(r.get("album", "")),
                             preview_url=(None if str(r.get("preview_url")) == "nan"
                                          else str(r.get("preview_url"))),
-                            score=1.0, profile=self.profile(row), row=row))
+                            score=1.0, profile=self.profile(row), row=row,
+                            isolation=self.isolation_pct(row)))
             session.seen.add(row)
         self.last_results = out
         return out

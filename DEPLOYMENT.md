@@ -564,3 +564,44 @@ something completely different": distance alone just returns a random other
 genre, whereas an unvisited dense region is somewhere they actually have music
 and have not been. After a solo-piano search, three of the four groups come
 back unvisited.
+
+### outliers(): "surprise me" had no tool
+
+Asked for "the most unusual track in my library" the agent had nothing to call,
+so it improvised — a text search for "avant-garde, eerie" with the wildcard on
+— and then, challenged, correctly described what it had actually done and why
+that was a weaker claim than the question implied. The gap was real: a wildcard
+is unusual *relative to one query*, not isolated in the collection.
+
+`outliers()` measures mean cosine to each track's **ten** nearest neighbours.
+Not the single nearest, which is the obvious choice and the fragile one: a
+track with a live version, a remaster or a duplicate entry has a neighbour at
+cos ~1.0 and can never rank as unusual however strange it is. Averaging over
+ten also stops a pair of mutually-odd tracks hiding each other — Romitelli's
+movements only surface under k-NN, because under nearest-neighbour they are
+each other's company.
+
+    most unusual                                     nn cos
+      Sufres Al Verme — Brayan Hino, Quixosis         0.313
+      An Index Of Metals: IV — Fausto Romitelli       0.331
+      An Index Of Metals: II, V                       0.424, 0.429
+      Walton: Symphony No. 2, Introduction            0.430
+    most representative
+      Nocturne No. 14 in C — John Field               0.984
+
+Chunked over 512 rows because the full similarity matrix is 200MB, computed
+once and cached: 0.49s cold, free thereafter.
+
+Every result now also carries `isolation`, 0–100, so how unusual a track is is
+known in every context rather than only when asked. Golijov's "Muerte" — the
+track the agent originally offered — comes back at 92: genuinely odd, but 8% of
+the library is stranger, which is roughly what it guessed from the `fit`
+verdict alone.
+
+### cluster() on the whole library was O(n²)
+
+`silhouette_score` builds the full pairwise distance matrix, so library-wide
+clustering computed 50 million pairs per candidate k. Now sampled at 1,500
+points, with MiniBatchKMeans above 2,000 tracks, and the library clustering
+cached since the library does not change between calls — only the `visited`
+flags do.

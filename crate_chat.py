@@ -135,6 +135,19 @@ classical it is the date of the performance, so never use a year range for a
 repertoire era — use the genre tags, which include "Baroque Era" and
 "Romantic Era".
 
+HOW UNUSUAL A TRACK IS
+
+Every result carries `isolation`, 0–100, where 100 is the strangest thing in \
+the library — mean cosine to its ten nearest neighbours, measured against all \
+of them. It is not the same as being far from the current query: a track can \
+be an odd fit for what was asked and still sit in a crowded part of the \
+collection.
+
+For "surprise me", "the most unusual thing I own" or "something completely \
+different", call `outliers`. Do not improvise it with a search wildcard — a \
+wildcard is unusual *relative to one query*, which is a different and weaker \
+claim, and saying otherwise would be a plain misdescription of what you did.
+
 WHEN AN ARTIST IS NOT ONE SOUND
 
 Averaging an artist's catalogue assumes they are coherent, and plenty are not —
@@ -397,6 +410,25 @@ TOOLS = [
         },
     },
     {
+        "name": "outliers",
+        "description": (
+            "The strangest tracks in the library, or with typical=true the most "
+            "representative. This is the right tool for \"surprise me\", \"what's "
+            "the most unusual thing I own\" or \"something completely "
+            "different\" — do NOT improvise those with a search wildcard, which "
+            "only gives you something unusual relative to that one query. "
+            "Measured as mean cosine to each track's ten nearest neighbours "
+            "across all of them."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "default": 8},
+                "typical": {"type": "boolean", "default": False,
+                            "description": "true for the most representative instead"},
+            },
+        },
+    },
+    {
         "name": "present",
         "description": (
             "Decide exactly what the user is shown, in your chosen order. Pass "
@@ -454,6 +486,8 @@ def _fmt(results):
         d = dict(track_id=r["track_id"], name=r["name"], artist=r["artist"])
         if r.get("profile"):
             d["profile"] = r["profile"]
+        if r.get("isolation") is not None:
+            d["isolation"] = r["isolation"]
         if r.get("wildcard"):
             d["wildcard"] = True
         out.append(d)
@@ -584,6 +618,10 @@ class CrateChat(object):
 
             if name == "library_overview":
                 return c.overview()
+
+            if name == "outliers":
+                return c.outliers(limit=int(args.get("limit") or 8),
+                                  typical=bool(args.get("typical")))
 
             if name == "cluster":
                 return c.cluster(artist=args.get("artist"),
