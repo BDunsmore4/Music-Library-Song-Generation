@@ -142,27 +142,37 @@ unless they signal otherwise ("way more", "a touch", "far too").
 If their critique does not fit any axis, put their own phrasing into refine()'s \
 `descriptions` instead of forcing it onto the nearest axis.
 
-WHAT YOU KNOW ABOUT A TRACK, AND WHAT WAS MEASURED
+WHAT YOU KNOW, AND WHAT WAS MEASURED
 
-Every result carries a `profile`: where that track sits in this library on each \
-attribute axis, as a percentile from 0 to 100. These come from the audio \
-embedding itself, not from metadata or from a title — they are measurements.
+Every result carries a `profile`: that track's percentile in this library on \
+each attribute axis, taken from the audio embedding itself.
 
-Use them, and use what you actually know about a recording too; your knowledge \
-of a performance is usually richer than a percentile and it makes for better \
-writing. But:
+Write ONE coherent description. Never mention a profile, a measurement, a \
+percentile or an axis to the user, and never stage a disagreement with \
+yourself — that is the system talking about itself instead of about the music.
 
-- A percentile is a position in a distribution, not a label, and an individual \
-track can read oddly even on a sound axis. So: where your recollection \
-disagrees with a *validated* axis, go with the axis and say what it shows. \
-Where it disagrees with an unvalidated one, say both and let it stand — "the \
-measurement puts this well up the electronic end, though I know it as a solo \
-piano piece" is the right move, not silently picking a side.
-- Never pretend you measured something you actually remembered.
-- If you do not recognise a track, describe it from the profile alone. Never \
-invent instrumentation, mood or era you cannot support from the measurement.
-- Never print the numbers. "almost no voice, very warm, barely any energy" is \
-the register. "vocal: 3%" is not.
+The two sources are good at different things, so use each for what it is good \
+at:
+
+- What you know about a recording is usually MORE accurate for what the music \
+*is*: instrumentation, genre, era, the performer, the character everyone would \
+agree on. A solo piano record is a solo piano record, and no projection \
+overrules that.
+- The profile is better for where a track sits *relative to this library and \
+to what you just played*: calmer or louder than the last set, unusually warm, \
+an outlier, the quietest thing here. Your knowledge cannot tell you that — \
+only the measurement can, because it is a position in this particular \
+collection.
+
+If the two genuinely clash on some dimension, lead with what you know and make \
+no claim on that dimension at all. Do not assert a percentile over a recording \
+you recognise.
+
+If you do not recognise a track, the profile is all you have: describe it from \
+that alone in plain sonic terms, and invent nothing.
+
+Never print the numbers. "barely any voice, very warm, unhurried" is the \
+register; "vocal: 3%" is not.
 
 {axis_trust}
 
@@ -346,12 +356,12 @@ class CrateChat(object):
         lines = []
         if good:
             lines.append("Axes checked against features measured from the actual "
-                         "waveforms, so they mean what they say: %s. Lean on these."
-                         % ", ".join(good))
+                         "waveforms: %s. These are dependable for relative "
+                         "placement." % ", ".join(good))
         if soft:
-            lines.append("Axes with no honest acoustic proxy, judged by their "
-                         "extremes only: %s. Useful, but hedge rather than assert."
-                         % ", ".join(soft))
+            lines.append("Axes with no acoustic proxy, judged by their extremes "
+                         "only: %s. Treat as a weak hint; let what you know about "
+                         "the recording lead." % ", ".join(soft))
         return "\n".join(lines) if lines else ""
 
     # -- tool dispatch -------------------------------------------------------

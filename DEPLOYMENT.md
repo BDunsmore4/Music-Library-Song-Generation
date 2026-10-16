@@ -403,3 +403,38 @@ projection of the query vector. A 512→3 linear fit would be dishonest (UMAP is
 far too non-linear) and `umap.transform` costs seconds, which would wreck the
 timing. This is exact, free and always consistent with what lights up — and the
 caption says so on screen.
+
+### Grounded descriptions
+
+Claude only ever sees `track_id`, `name`, `artist` — never the audio or the
+embedding — so for a long time every sonic adjective in its replies came from
+its own knowledge of the recording. Usually right, never verified, and it would
+describe a track it had never heard of from the title with identical
+confidence.
+
+Every result now carries a `profile`: that track's percentile in this library on
+each validated axis, from the audio embedding. One dot product per axis, cached.
+
+The division of labour matters and is easy to get backwards:
+
+- **What Claude knows is usually more accurate for what the music *is*** —
+  instrumentation, genre, era, performer. A solo piano record is a solo piano
+  record and no projection overrules that.
+- **The profile is better for where a track sits relative to this library** and
+  to what was just played: calmer than the last set, unusually warm, an
+  outlier. Knowledge cannot supply that, because a percentile is a position in
+  this particular collection.
+
+The output is one coherent description that uses each for what it is good at.
+The assistant is explicitly told never to mention a profile, percentile or axis
+to the user and never to stage a disagreement with itself — that is the system
+talking about itself instead of about the music. Where the two genuinely clash,
+it leads with what it knows and makes no claim on that dimension.
+
+Per-axis weighting in the prompt is generated from `taste_axes_report.json`, so
+it cannot drift from what was validated.
+
+`taste_axes.py stability` adds a label-free screen for the axes `validate()`
+cannot test: an axis measuring something real varies less within one artist's
+catalogue than across the library. All eight pass (energy 0.36 tightest,
+aggression 0.74 weakest). Worth re-running after any change to POLES.
