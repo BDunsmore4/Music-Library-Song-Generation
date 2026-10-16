@@ -500,3 +500,37 @@ nothing, which is the honest answer when a search found nothing worth showing.
 The prompt now forbids leaving a rejected result on screen, and requires that
 anything it recommends be confirmed present with `library_lookup` first — its
 knowledge proposes, the metadata confirms, `present` decides.
+
+## 11. Metadata enrichment (era and genre)
+
+`python enrich_metadata.py` — resolves every ISRC against Apple's catalogue for
+a release date and genre tags. 7,046 unique ISRCs, batched 25 to a request, so
+~282 calls and about a minute. Resumable: raw responses are cached in
+`data/apple_cache.json`, so a re-run after a failure costs nothing. Output is
+`data/library_enriched.csv`, joined on track id at Crate init.
+
+Coverage on this library: **7,024 of 7,106 tracks (98.8%)** have a year and
+genre tags. By decade: 734 in the 1980s, 1,070 in the 90s, 1,843 in the 2010s.
+Commonest tags: Classical 4,112, Pop 713, Rock 503, Jazz 463, Dance 332.
+
+`search_by_description` now takes `year_from`, `year_to` and `genres`, which
+filter the library *before* acoustic ranking, and the result carries a `filter`
+block with the surviving candidate count so the assistant can admit when a
+filter left almost nothing. The wildcard respects the filter too — an outlier
+that breaks the requested era is not an outlier, it is a mistake.
+
+This is what "happy 80s dance tracks" needed. Unfiltered it returned 2020s
+trance, because CLAP hears "upbeat, dance, synths" and matches exactly that;
+the decade is inaudible to it. Filtered to 1980–1989 with Dance/Pop tags it
+returns Eurythmics, The Alan Parsons Project and Paul Simon.
+
+**`year` is when the RECORDING was released, not when the music was written.**
+For popular music those coincide. For the 4,000+ classical tracks here it is
+the date of the performance — Kabalevsky's 24 Preludes resolve to 2000. So
+never use a year range for a repertoire era; use the genre tags, which include
+"Baroque Era" and "Romantic Era". Filtering `genres=["Baroque Era"]` correctly
+returns Handel and the Goldberg Variations.
+
+Genre tags are commercial categories, not musicology, and sometimes very
+coarse — Graceland is filed under "Worldwide". Treat them as a usable filter,
+not a taxonomy.

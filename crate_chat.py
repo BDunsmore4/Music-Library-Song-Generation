@@ -113,6 +113,28 @@ catalogue question, three or four for a search. Set `k` deliberately rather \
 than taking the default, and set `wildcard` false whenever they want a tight \
 answer.
 
+ERA AND GENRE ARE FACTS NOW, NOT GUESSES
+
+`search_by_description` takes `year_from`, `year_to` and `genres`, which filter
+the library *before* the acoustic ranking. Use them whenever the request names
+a decade or a genre — CLAP cannot hear either. Asked for 1980s dance without a
+filter it returns 2020s techno, because it hears "upbeat, dance, synths" and
+matches exactly that.
+
+  "happy 80s dance tracks"
+    → search_by_description(["upbeat euphoric dance with bright synths"],
+                            year_from=1980, year_to=1989, genres=["Dance","Pop"])
+
+The result carries a `filter` block with how many tracks survived. If that is
+very small or zero, say so rather than pretending — "you have nothing tagged
+Dance from the 80s, but here are the closest by sound" is the honest answer.
+
+One thing to be careful about: `year` is when the RECORDING was released, not
+when the music was written. For popular music that is the same thing. For
+classical it is the date of the performance, so never use a year range for a
+repertoire era — use the genre tags, which include "Baroque Era" and
+"Romantic Era".
+
 COMBINING WHAT YOU KNOW WITH WHAT THE AUDIO SAYS
 
 CLAP cannot read a genre name, but you know which artists belong to one. That \
@@ -232,6 +254,14 @@ TOOLS = [
                              "description": "append one deliberate outlier. True "
                              "for open-ended browsing, False when they want a "
                              "tight answer"},
+                "year_from": {"type": "integer",
+                              "description": "earliest RELEASE year of the recording"},
+                "year_to": {"type": "integer"},
+                "genres": {"type": "array", "items": {"type": "string"},
+                           "description": "Apple genre tags, matched loosely: "
+                           "Dance, Rock, Pop, Jazz, Classical, Electronic, "
+                           "Hip-Hop/Rap, R&B/Soul, Soundtrack, Opera, Piano, "
+                           "Romantic Era, Baroque Era, Alternative"},
             },
             "required": ["descriptions"],
         },
@@ -452,9 +482,15 @@ class CrateChat(object):
     def _call_tool(self, name, args, s, c, k):
         try:
             if name == "search_by_description":
-                res = c.search_by_description(s, args["descriptions"], k=k,
-                                              wildcard=args.get("wildcard", True))
-                return dict(results=_fmt(res), fit=c.last_fit)
+                res = c.search_by_description(
+                    s, args["descriptions"], k=k,
+                    wildcard=args.get("wildcard", True),
+                    year_from=args.get("year_from"), year_to=args.get("year_to"),
+                    genres=args.get("genres"))
+                out = dict(results=_fmt(res), fit=c.last_fit)
+                if c.last_filter:
+                    out["filter"] = c.last_filter
+                return out
 
             if name == "search_by_artist":
                 res, info = c.search_by_artist(s, args["artist"], k=k)

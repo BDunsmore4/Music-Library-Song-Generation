@@ -395,6 +395,7 @@ class Crate(object):
         self._id_to_row = {}
         for i, tid in enumerate(self.meta["id"].astype(str)):
             self._id_to_row.setdefault(tid, i)
+        self._load_enrichment()
         self._artist_norm = self.meta["artists"].astype(str).map(_norm_name)
         self._name_norm = self.meta["name"].astype(str).map(_norm_name)
         self._reducer = None
@@ -402,6 +403,7 @@ class Crate(object):
         self._nn_ref = None
         self.last_fit = None
         self.last_results = []
+        self.last_filter = None
         # The offset learned from accumulated feedback, applied to text queries
         # only — that is where the modality gap lives. None until enough
         # feedback has been logged AND it beat held-out rank (crate_store).
@@ -551,7 +553,7 @@ class Crate(object):
         except Exception:
             return None
 
-    def _results(self, q, k, session, per_artist=1, exclude=()):
+    def _results(self, q, k, session, per_artist=1, exclude=(), allow=None):
         """Rank the library against q, deduped by artist and by what's been shown.
 
         Artist dedup matters more than it sounds: the tightest neighbourhoods
@@ -560,6 +562,8 @@ class Crate(object):
         """
         s = self.X @ q
         order = np.argsort(-s)
+        if allow is not None:
+            order = order[allow[order]]
         drop = set(exclude) | session.seen
         out, used = [], {}
         for j in order:
@@ -583,7 +587,7 @@ class Crate(object):
             session.seen.add(r["row"])
         return out
 
-    def _wildcard(self, session, q, shown_rows, exclude=()):
+    def _wildcard(self, session, q, shown_rows, exclude=(), allow=None):
         """One track from the rank band, biased toward distance from the cluster.
 
         Returns a result dict with wildcard=True, or None if the band is empty.
@@ -595,6 +599,8 @@ class Crate(object):
         s = self.X @ q
         order = np.argsort(-s)
         drop = set(int(j) for j in exclude) | set(int(j) for j in shown_rows)             | set(int(j) for j in session.disliked)
+        if allow is not None:
+            order = order[allow[order]]
         band = [int(j) for j in order[lo:hi] if int(j) not in drop]
         if not band:
             return None
@@ -621,12 +627,12 @@ class Crate(object):
                     rank=int(np.where(order == j)[0][0]))
 
     def _commit(self, session, q, label, k, exclude=(), kind="audio", op=None,
-                wildcard=True):
+                wildcard=True, allow=None):
         session.q = unit(q)
         xy = self._project(session.q)
         if xy:
             session.trail.append(dict(x=xy[0], y=xy[1], label=label))
-        res = self._results(session.q, k, session, exclude=exclude)
+        res = self._results(session.q, k, session, exclude=exclude, allow=allow)
         session.turns.append(dict(op=(op or kind or "refine"), label=label,
                                   results=[r["track_id"] for r in res]))
         # kind=None means "not calibratable" — a refined query sits off the
@@ -639,7 +645,7 @@ class Crate(object):
         # Appended after `fit`, so the wildcard never affects the confidence
         # reading, and last so res[0] stays the genuine best match.
         wc = self._wildcard(session, session.q, [r["row"] for r in res],
-                            exclude=exclude) if (wildcard and res) else None
+                            exclude=exclude, allow=allow) if (wildcard and res) else None
         if wc:
             session.seen.add(wc["row"])
             res = res + [wc]
@@ -659,7 +665,8 @@ class Crate(object):
         return res
 
     # -- operation 1: free-text description ----------------------------------
-    def search_by_description(self, session, descriptions, k=5, wildcard=True):
+    def search_by_description(self, session, descriptions, k=5, wildcard=True,
+                              year_from=None, year_to=None, genres=None):
         """Average 1-3 sound descriptions into one query and search.
 
         Averaging is done on the unit vectors *after* translation into audio
@@ -675,8 +682,75 @@ class Crate(object):
         q = unit(E.mean(0))
         if self._adapter is not None:
             q = unit(q + self._adapter_eta * self._adapter)
-        return self._commit(session, q, "text: " + "; ".join(descriptions)[:90],
-                            k, kind="text", op="text", wildcard=wildcard)
+        mask, note = self.filter_rows(year_from, year_to, genres)
+        allow = mask if (year_from or year_to or genres) else None
+        self.last_filter = dict(note=note, candidates=int(mask.sum())) if allow is not None else None
+        label = "text: " + "; ".join(descriptions)[:90] + (" [%s]" % note if note else "")
+        return self._commit(session, q, label, k, kind="text", op="text",
+                            wildcard=wildcard, allow=allow)
+
+    # -- the enrichment: release year and genre tags ------------------------
+    def _load_enrichment(self):
+        """Join data/library_enriched.csv on track id, if it has been built.
+
+        Optional by design: without it `year` and `genres` filters simply
+        report themselves unavailable rather than failing. Run
+        `python enrich_metadata.py` to build it (~282 Apple calls, 98.8%
+        coverage on this library).
+        """
+        import pandas as pd
+        path = os.environ.get("LIBRARY_ENRICHED",
+                              os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                           "data", "library_enriched.csv"))
+        self.year = None
+        self.genres = None
+        if not os.path.exists(path):
+            return
+        try:
+            e = pd.read_csv(path, dtype={"track_id": str})
+            e = e.set_index("track_id")
+            ids = self.meta["id"].astype(str)
+            yr = pd.to_numeric(e["year"].reindex(ids).values, errors="coerce")
+            self.year = yr.astype("float32")
+            g = e["genres"].reindex(ids).fillna("").astype(str).str.lower().values
+            self.genres = np.array(g, dtype=object)
+            print("[crate] enrichment: %d/%d tracks have a year"
+                  % (int(np.isfinite(self.year).sum()), self.n))
+        except Exception as ex:
+            print("[crate] enrichment unavailable (%s)" % ex)
+            self.year = None
+            self.genres = None
+
+    def filter_rows(self, year_from=None, year_to=None, genres=None):
+        """Boolean mask over the library. Returns (mask, note).
+
+        `year` is the RELEASE date of the recording, not when the music was
+        written — see enrich_metadata.py. Fine for "80s dance", wrong for
+        "Baroque", which is what the genre tags are for ("Baroque Era",
+        "Romantic Era" are among Apple's tags).
+        """
+        mask = np.ones(self.n, dtype=bool)
+        notes = []
+        if (year_from or year_to) and self.year is None:
+            return mask, "no year data — run enrich_metadata.py"
+        if year_from is not None:
+            mask &= np.isfinite(self.year) & (self.year >= float(year_from))
+            notes.append("from %d" % year_from)
+        if year_to is not None:
+            mask &= np.isfinite(self.year) & (self.year <= float(year_to))
+            notes.append("to %d" % year_to)
+        if genres:
+            if self.genres is None:
+                return mask, "no genre data — run enrich_metadata.py"
+            want = [str(g).lower().strip() for g in genres if str(g).strip()]
+            if want:
+                gm = np.zeros(self.n, dtype=bool)
+                for i, tags in enumerate(self.genres):
+                    if tags and any(w in tags for w in want):
+                        gm[i] = True
+                mask &= gm
+                notes.append("genre " + "/".join(want))
+        return mask, (", ".join(notes) if notes else None)
 
     # -- metadata, answered as metadata -------------------------------------
     def lookup(self, artists=None, tracks=None, albums=None, limit=40):
