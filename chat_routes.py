@@ -171,7 +171,11 @@ def _public(results):
     # intensity does not.
     scores = [float(r.get("score") or 0.0) for r in results]
     lo, hi = (min(scores), max(scores)) if scores else (0.0, 1.0)
-    span = (hi - lo) or 1.0
+    span = hi - lo
+    # A catalogue answer or a direct play has no spread to normalise, so every
+    # row is equally "relevant" — light them all fully rather than uniformly dim.
+    uniform = span <= 1e-9
+    span = span or 1.0
     out = []
     for r, sc in zip(results, scores):
         xy = coords.get(str(r.get("track_id"))) or (None, None)
@@ -181,7 +185,8 @@ def _public(results):
                         preview_url=r.get("preview_url"),
                         wildcard=bool(r.get("wildcard")),
                         profile=r.get("profile") or {},
-                        relevance=round(0.15 + 0.85 * (sc - lo) / span, 3),
+                        relevance=(1.0 if uniform
+                                   else round(0.15 + 0.85 * (sc - lo) / span, 3)),
                         x=xy[0], y=xy[1],
                         x3=(xyz[0] if xyz else None),
                         y3=(xyz[1] if xyz else None),

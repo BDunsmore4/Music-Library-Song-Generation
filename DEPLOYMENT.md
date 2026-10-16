@@ -438,3 +438,44 @@ it cannot drift from what was validated.
 cannot test: an axis measuring something real varies less within one artist's
 catalogue than across the library. All eight pass (energy 0.36 tightest,
 aggression 0.74 weakest). Worth re-running after any change to POLES.
+
+### Autonomy and the wider toolset
+
+The assistant now decides what to do rather than running the same retrieval
+after every message. The forced tool call on the opening turn is gone — it did
+get tracks on screen fast, but it made it impossible to answer "what Paul Simon
+have I got" without an acoustic search, or to ask a clarifying question when one
+was genuinely needed. The prompt steers toward acting over interviewing; the
+choice is the model's.
+
+Eight tools:
+
+| tool | for |
+|---|---|
+| `search_by_description` | acoustic search; `wildcard` is now a parameter |
+| `search_by_artist` / `add_artists` | seed or weight by artist |
+| `search_by_track` | neighbours of one track |
+| `refine` | Rocchio over feedback and axes |
+| **`library_lookup`** | metadata only — "what X have I got", "do I own any of these" |
+| **`play`** | one named track, by itself |
+| **`library_overview`** | size, distinct artists, who dominates |
+
+Output shape follows the request: one track for a play, a list for a catalogue
+question, three or four for a search. No wildcard on a lookup or a play.
+
+**The knowledge-then-audio pattern.** CLAP cannot read a genre name, but the
+model knows which artists belong to one. So it names candidates from its own
+knowledge, `library_lookup` says which are actually present, and the search is
+then seeded from real audio:
+
+    "got any psytrance?"
+      -> library_lookup(artists=["Infected Mushroom","Astrix","Shpongle", ...])
+      -> whichever exist here
+      -> add_artists on those
+
+`library_lookup` matches on **word boundaries**, not bare substrings. That
+matters more than it sounds: as a substring, "Ott" matches Travis Scott and
+Ottorino Respighi, which turned a seven-artist psytrance check into 158 false
+positives the assistant would have believed. It also returns `per_query` counts
+and an `absent` list, so "you have none of the usual psytrance names, shall I
+find the nearest thing by sound?" is answerable truthfully.

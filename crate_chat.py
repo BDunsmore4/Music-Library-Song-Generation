@@ -76,48 +76,47 @@ If part of what they said has no acoustic content at all, still keep their own \
 phrasing as one of the descriptions rather than dropping it — it sometimes \
 lands, and if it does not, the other descriptions carry the search.
 
-THE SHAPE OF THE CONVERSATION
+HOW TO DECIDE WHAT TO DO
 
-Follow this order.
+You choose. Read what they actually asked for and answer that — there is no
+fixed procedure and no fixed output shape.
 
-1. They describe what they want. Structure it into 2-3 sound descriptions and \
-call search_by_description straight away. Do not interview them first — people \
-answer "is this too stiff?" far more easily than "how groovy do you want it?", \
-so get concrete tracks in front of them before asking anything.
-2. Present the three matches, then the wildcard separately.
-3. Then ask two things in one short question: whether any of those worked, and \
-whether they have any artists in mind. Expect more than one artist — "a bit of \
-Bonobo and maybe Four Tet" is normal, and add_artists takes several at once.
-4. When they name artists, call add_artists. That BLENDS the artists into the \
-conversation so far as a weight; it does not throw away what you have already \
-established. Use weight "strong" only if they are clearly redirecting you.
-5. From then on, every turn is refine() on what they said, plus add_artists \
-whenever new names come up.
+- A question about the catalogue is a metadata question. "What Paul Simon have \
+I got", "do I own any Boards of Canada", "how many tracks are in here" → \
+library_lookup or library_overview. Answer it. Do not run an acoustic search \
+and do not append a wildcard; four neighbours and an outlier is an answer to a \
+different question.
+- "Play X" → play. One track, no neighbours.
+- "Find me something like…" → an acoustic search, and here a wildcard earns \
+its place.
+- A request too vague to act on usefully → ask. One short question, no search. \
+But prefer acting: people react to concrete tracks far more easily than they \
+answer abstract questions, so if a reasonable search exists, run it and ask \
+afterwards.
+- Something conversational, or a question about how any of this works → just \
+answer. You do not have to call a tool at all.
 
-Never present the named artists' own songs back to them. Asking for something \
-like Bonobo is a request for adjacency, not for Bonobo — the tools already \
-exclude that artist's own tracks, so if you find yourself about to say "here is \
-a Bonobo track", something has gone wrong. The same applies to a track they \
-named: offer neighbours, not the song itself.
+Return as many tracks as the request implies: one for a play, a list for a \
+catalogue question, three or four for a search. Set `k` deliberately rather \
+than taking the default, and set `wildcard` false whenever they want a tight \
+answer.
 
-If they do not have an artist in mind, carry on with descriptions and axes. Do \
-not press them on it twice.
+COMBINING WHAT YOU KNOW WITH WHAT THE AUDIO SAYS
 
-THE WILDCARD
+CLAP cannot read a genre name, but you know which artists belong to one. That \
+makes a two-step possible, and it is usually better than either half alone:
 
-Every result set ends with one track flagged `wildcard: true`. It is not one of \
-the matches — it is deliberately drawn from further out, so it is the one \
-suggestion that might be wrong in an interesting way.
+  "got any psytrance?"
+    → library_lookup(artists=["Infected Mushroom","Astrix","Vini Vici",
+                              "Shpongle","Hallucinogen", …])      ← your knowledge
+    → whichever are actually present
+    → add_artists on those                                        ← real audio
+    → now the search is calibrated on tracks that exist here
 
-Present it apart from the other three and say what it is, in a few words: "and \
-one from further out" is enough. Never pad the matches with it or pass it off \
-as a close fit.
-
-Then make a point of asking about it. A verdict on the wildcard is worth more \
-than a verdict on the top hit, because the top hit being right teaches the \
-system nothing it did not already believe. If they like it, pass it as \
-keep_track_ids on the next refine; if they do not, reject_track_ids. Either \
-answer is useful, so ask for one.
+Use the same move for eras, scenes, regions, moods with a canon — anything you \
+can name artists for but CLAP cannot hear as a word. Name generously; it costs \
+nothing for a name to be absent. If none of them are present, say so plainly \
+and fall back to describing the sound instead.
 
 WHEN THEY PUSH BACK ON A RESULT
 
@@ -217,6 +216,10 @@ TOOLS = [
                     "minItems": 1, "maxItems": 3,
                     "description": "e.g. 'mellow acoustic guitar, soft vocals, slow tempo'"},
                 "k": {"type": "integer", "default": 3},
+                "wildcard": {"type": "boolean", "default": True,
+                             "description": "append one deliberate outlier. True "
+                             "for open-ended browsing, False when they want a "
+                             "tight answer"},
             },
             "required": ["descriptions"],
         },
@@ -273,6 +276,44 @@ TOOLS = [
             },
             "required": ["artists"],
         },
+    },
+    {
+        "name": "library_lookup",
+        "description": (
+            "Answer a question ABOUT the catalogue from metadata alone — no "
+            "acoustic search, no neighbours, no wildcard. Use it for 'what X "
+            "have I got', 'do I own any of these', 'how many', and to check "
+            "which of a list of artists is actually present. Exact-ish "
+            "substring matching on artist, track title and album."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "artists": {"type": "array", "items": {"type": "string"}},
+                "tracks": {"type": "array", "items": {"type": "string"}},
+                "albums": {"type": "array", "items": {"type": "string"}},
+                "limit": {"type": "integer", "default": 40},
+            },
+        },
+    },
+    {
+        "name": "play",
+        "description": (
+            "Hand back ONE named track for immediate playback. Use when they "
+            "ask to hear something specific. Returns that track alone — not "
+            "things that sound like it, and no wildcard."),
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string",
+                                     "description": "track title, or its id"}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "library_overview",
+        "description": (
+            "Size of the library, number of distinct artists, who is most "
+            "represented, and the available axes. For orientation questions."),
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "refine",
@@ -381,7 +422,8 @@ class CrateChat(object):
     def _call_tool(self, name, args, s, c, k):
         try:
             if name == "search_by_description":
-                res = c.search_by_description(s, args["descriptions"], k=k)
+                res = c.search_by_description(s, args["descriptions"], k=k,
+                                              wildcard=args.get("wildcard", True))
                 return dict(results=_fmt(res), fit=c.last_fit)
 
             if name == "search_by_artist":
@@ -409,6 +451,35 @@ class CrateChat(object):
                     blended_into_existing_query=info.get("blended_into_existing_query"),
                     weight=info.get("weight"), error=info.get("error"))
 
+            if name == "library_lookup":
+                hits, total, per = c.lookup(args.get("artists"), args.get("tracks"),
+                                            args.get("albums"),
+                                            int(args.get("limit") or 40))
+                # The UI should be able to play what a catalogue question
+                # turned up, so these count as results even though no acoustic
+                # search ran.
+                self.last_results = hits
+                return dict(found=total, showing=len(hits),
+                            per_query=per,
+                            absent=sorted(k for k, v in per.items() if not v),
+                            tracks=[dict(track_id=h["track_id"], name=h["name"],
+                                         artist=h["artist"], album=h["album"],
+                                         matched=h["matched"]) for h in hits])
+
+            if name == "play":
+                t, n = c.play(args["query"])
+                if not t:
+                    return dict(error="nothing in the library matches %r"
+                                      % args.get("query"))
+                self.last_results = [t]
+                return dict(playing=dict(track_id=t["track_id"], name=t["name"],
+                                         artist=t["artist"], album=t["album"],
+                                         profile=t["profile"]),
+                            other_matches=max(0, n - 1))
+
+            if name == "library_overview":
+                return c.overview()
+
             if name == "refine":
                 res, applied = c.refine(
                     s, adjust=args.get("adjust"),
@@ -430,37 +501,22 @@ class CrateChat(object):
     def say(self, user_text, verbose=True):
         """One user turn: run the tool loop until the model stops calling tools.
 
-        `force_tool` is set on the opening turn of a conversation. Smaller
-        open-weights models will otherwise happily reply "sure, what sort of
-        mood are you in?" without searching anything, which wastes the turn;
-        requiring a call gets tracks on screen. If the backend ignores that and
-        still returns no call, the fallback below searches on the raw message
-        rather than returning a contentless reply.
+        Nothing is forced. An earlier version required a tool call on the
+        opening turn, which did get tracks on screen quickly but made it
+        impossible to answer "what Paul Simon have I got" without an acoustic
+        search, or to ask a clarifying question when the request genuinely
+        needed one. The prompt now steers toward acting rather than
+        interviewing, and the choice is the model's.
         """
         backend = self._backend()
         self.steps = []
         self.messages.append(llm.user(user_text))
-        opening = not self._searched
-
         for attempt in range(MAX_TURNS):
-            reply = backend.complete(self.system_prompt(), self.messages, TOOLS,
-                                     force_tool=(opening and attempt == 0))
+            reply = backend.complete(self.system_prompt(), self.messages, TOOLS)
             self._account(reply)
             self.messages.append(llm.assistant(reply))
 
             if not reply.tool_calls:
-                if opening and attempt == 0:
-                    # The model would not call a tool. Do the obvious thing
-                    # ourselves so the user gets music, and tell the model what
-                    # happened so its next sentence is about real tracks.
-                    out = self.call_tool("search_by_description",
-                                         {"descriptions": [user_text], "k": 3})
-                    self.messages.append(llm.tool_result(
-                        llm.ToolCall("fallback", "search_by_description", {}), out))
-                    if verbose:
-                        print("   [fallback: model called no tool; searched on "
-                              "the raw message]")
-                    continue
                 return reply.text or "(no reply)"
 
             results = []
@@ -539,12 +595,10 @@ class CrateChat(object):
         backend = self._backend()
         self.steps = []
         self.messages.append(llm.user(user_text))
-        opening = not self._searched
 
         for attempt in range(MAX_TURNS):
             try:
-                reply = backend.complete(self.system_prompt(), self.messages,
-                                         TOOLS, force_tool=(opening and attempt == 0))
+                reply = backend.complete(self.system_prompt(), self.messages, TOOLS)
             except Exception as e:
                 yield {"type": "error", "message": "%s: %s" % (type(e).__name__, e)}
                 return
@@ -552,18 +606,6 @@ class CrateChat(object):
             self.messages.append(llm.assistant(reply))
 
             if not reply.tool_calls:
-                if opening and attempt == 0:
-                    out = self.call_tool("search_by_description",
-                                         {"descriptions": [user_text], "k": 3})
-                    yield {"type": "structuring", "descriptions": [user_text],
-                           "embedded": [taste_axes.TEMPLATE % user_text],
-                           "template": taste_axes.TEMPLATE, "dims": 512,
-                           "averaged": False, "fallback": True}
-                    yield {"type": "tracks", "results": self.last_results,
-                           "step": self.steps[-1] if self.steps else None}
-                    self.messages.append(llm.tool_result(
-                        llm.ToolCall("fallback", "search_by_description", {}), out))
-                    continue
                 yield {"type": "reply", "text": reply.text or ""}
                 yield {"type": "done", "usage": self.usage}
                 return

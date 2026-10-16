@@ -659,7 +659,7 @@ class Crate(object):
         return res
 
     # -- operation 1: free-text description ----------------------------------
-    def search_by_description(self, session, descriptions, k=5):
+    def search_by_description(self, session, descriptions, k=5, wildcard=True):
         """Average 1-3 sound descriptions into one query and search.
 
         Averaging is done on the unit vectors *after* translation into audio
@@ -676,7 +676,93 @@ class Crate(object):
         if self._adapter is not None:
             q = unit(q + self._adapter_eta * self._adapter)
         return self._commit(session, q, "text: " + "; ".join(descriptions)[:90],
-                            k, kind="text", op="text")
+                            k, kind="text", op="text", wildcard=wildcard)
+
+    # -- metadata, answered as metadata -------------------------------------
+    def lookup(self, artists=None, tracks=None, albums=None, limit=40):
+        """Pure metadata query. No CLAP, no neighbours, no wildcard.
+
+        "What Paul Simon have I got" is a question about the catalogue, not a
+        similarity search, and answering it with four acoustic neighbours and an
+        outlier is answering a different question. This also powers the
+        knowledge-then-audio pattern: the assistant names the artists it would
+        expect for a genre CLAP cannot read, this says which are actually here,
+        and the search is then seeded from real audio.
+        """
+        # Word-boundary matching, not bare substring. "Ott" as a substring
+        # matches Travis Scott and Ottorino Respighi, which turned a check for
+        # seven psytrance artists into 158 false positives — and the assistant
+        # would have believed it.
+        hits, seen, per = [], set(), {}
+        def pat(t):
+            return r"\b" + re.escape(t) + r"\b"
+        def add(rows, why):
+            per[why] = per.get(why, 0) + len(rows)
+            for j in rows:
+                j = int(j)
+                if j in seen:
+                    continue
+                seen.add(j)
+                r = self.meta.iloc[j]
+                hits.append(dict(track_id=str(r["id"]), name=str(r["name"]),
+                                 artist=str(r["artists"]),
+                                 album=str(r.get("album", "")),
+                                 preview_url=(None if str(r.get("preview_url")) == "nan"
+                                              else str(r.get("preview_url"))),
+                                 matched=why, row=j, score=1.0,
+                                 profile=self.profile(j)))
+        for a in (artists or []):
+            t = _norm_name(a)
+            per.setdefault(a, 0)
+            if t:
+                add(np.where(self._artist_norm.str.contains(pat(t), regex=True).values)[0], a)
+        for t_ in (tracks or []):
+            t = _norm_name(t_)
+            per.setdefault(t_, 0)
+            if t:
+                add(np.where(self._name_norm.str.contains(pat(t), regex=True).values)[0], t_)
+        if albums:
+            col = self.meta["album"].astype(str).map(_norm_name)
+            for al in albums:
+                t = _norm_name(al)
+                per.setdefault(al, 0)
+                if t:
+                    add(np.where(col.str.contains(pat(t), regex=True).values)[0], al)
+        return hits[:limit], len(hits), per
+
+    def play(self, query):
+        """Resolve one named track and hand it back by itself.
+
+        "Play Graceland" wants Graceland, not things that sound like it.
+        """
+        rows = self._rows_for_ids([query])
+        if not rows:
+            t = _norm_name(query)
+            m = self._name_norm.str.contains(re.escape(t), regex=True)
+            rows = list(np.where(m.values)[0])
+            if not rows:
+                toks = [w for w in t.split() if len(w) > 2]
+                if toks:
+                    m = self._name_norm.str.contains("|".join(re.escape(w) for w in toks))
+                    rows = list(np.where(m.values)[0])
+        if not rows:
+            return None, 0
+        j = int(rows[0])
+        r = self.meta.iloc[j]
+        return dict(track_id=str(r["id"]), name=str(r["name"]),
+                    artist=str(r["artists"]), album=str(r.get("album", "")),
+                    preview_url=(None if str(r.get("preview_url")) == "nan"
+                                 else str(r.get("preview_url"))),
+                    profile=self.profile(j), row=j), len(rows)
+
+    def overview(self, top=12):
+        """Orientation: how big the library is and who is most of it."""
+        counts = self.meta["artists"].astype(str).str.split(",").str[0].str.strip()
+        vc = counts.value_counts()
+        return dict(tracks=int(self.n), distinct_lead_artists=int(vc.size),
+                    most_represented=[{"artist": a, "tracks": int(c)}
+                                      for a, c in vc.head(top).items()],
+                    axes=sorted(self.axes))
 
     # -- artist resolution, shared by both artist operations -----------------
     def _artist_rows(self, artist):
