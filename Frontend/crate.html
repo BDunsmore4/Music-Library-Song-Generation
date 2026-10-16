@@ -132,6 +132,15 @@ body{overflow:hidden}
 @media(max-width:620px){#tool-rig{right:10px;bottom:165px}#tool-rig svg{width:110px;height:110px}.reveal-tools{flex-wrap:wrap}#reveal-status{max-width:190px}}
 @media(prefers-reduced-motion:reduce){#tool-rig.swing #hammer{animation:none}}
 
+
+/* The steel tip, rather than a floating tool palette, is the pointer. */
+#tool-rig{right:auto;bottom:auto;left:0;top:0;pointer-events:none;will-change:transform}
+#tool-rig svg{width:104px;height:97.5px;filter:drop-shadow(2px 4px 3px #0009)}
+#tool-rig #hammer{opacity:0;transition:opacity .1s}
+#tool-rig.swing #hammer{opacity:1}
+body.chisel-armed #glass-pane,body.chisel-armed #glass-pane *{cursor:none}
+body.chisel-armed #glass-pane :is(button,textarea,a){cursor:auto}
+#strike{position:fixed;right:18px;bottom:125px;z-index:9}
 </style>
 </head>
 <body>
@@ -186,8 +195,8 @@ body{overflow:hidden}
       <path d="M55 34 L81 25 M60 39 L91 28 M67 44 L90 36 M43 38 L48 51" stroke="#eef3ed" stroke-width=".5" opacity=".35"/>
     </g>
   </svg>
-  <button id="strike" type="button">Strike · Space</button>
 </div>
+<button id="strike" type="button" hidden>Strike · Space</button>
 <div id="shards" aria-hidden="true" hidden></div>
 <button id="return-chat" type="button" hidden>← Back to Crate</button>
 
@@ -398,6 +407,8 @@ const statusLine = document.getElementById('reveal-status');
 const strikeButton = document.getElementById('strike');
 const returnButton = document.getElementById('return-chat');
 let revealState = 'chat', hits = 0, lastStrike = -Infinity;
+const BREAK_HITS=3;
+let aim={x:innerWidth*.65,y:innerHeight*.55}, strikePoint=null, striking=false;
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 function isRevealRequest(text){
   return /\b(hammer|chisel)\b|\bshow me (how (this|it) works|the (space|constellation))\b|\bbreak (the )?(glass|screen)\b/i.test(text);
@@ -405,9 +416,10 @@ function isRevealRequest(text){
 function equipTools(){
   if (revealState !== 'chat') return;
   revealState = 'armed'; rig.classList.add('equipped');
+  document.body.classList.add('chisel-armed');strikeButton.hidden=false;placeChisel();
   document.getElementById('equip').disabled = true;
-  statusLine.textContent = 'Five strikes. Press Space or tap Strike.';
-  addMessage('bot', 'Here’s your hammer and chisel. Five strikes will open the space behind the chat. Press Space, or tap Strike.');
+  statusLine.textContent = 'Three strikes. Click the pane, press Space, or tap Strike.';
+  addMessage('bot', 'The chisel is your cursor. Click or tap the pane to strike, or press Space. Three hits will break through.');
   input.blur(); strikeButton.focus();
 }
 // Seeded fractures are continuous across hits; no repeating sine-wave teeth.
@@ -430,9 +442,9 @@ function glassLine(points,width,alpha){
 }
 function growCracks(){
   const rand=fractureRandom;
-  if(!impact){
-    const r=rig.querySelector('svg').getBoundingClientRect();
-    impact={x:(r.left+r.width*30/160)/innerWidth*1000,y:(r.top+r.height*140/150)/innerHeight*1000};
+  fractureRays=[];
+  {
+    impact={x:strikePoint.x/innerWidth*1000,y:strikePoint.y/innerHeight*1000};
     for(let i=0;i<19;i++){
       const angle=(i+rand()*.7)*Math.PI*2/19;
       fractureRays.push({angle,x:impact.x,y:impact.y,reach:0,weight:.35+rand()*.65});
@@ -441,7 +453,7 @@ function growCracks(){
   // Work in viewport pixels so fractures don't stretch on wide screens.
   const sx=1000/innerWidth,sy=1000/innerHeight;
   const maxReach=Math.hypot(innerWidth,innerHeight);
-  const lengths=[0,.12,.3,.53,.85,1.2];
+  const lengths=[0,.35,.7,1.2];
   for(const ray of fractureRays){
     const target=maxReach*lengths[hits]*(.65+ray.weight*.45);
     const pts=[[ray.x,ray.y]];
@@ -485,8 +497,9 @@ function impactFeedback(){
 
 async function shatter(){
   revealState='breaking'; rig.classList.remove('equipped');
+  document.body.classList.remove('chisel-armed');strikeButton.hidden=true;
   if(audio) audio.pause();
-  // Audio is unlocked by the fifth strike before its impact animation.
+  // Audio is unlocked by the third strike before its impact animation.
   pane.inert=true;
   const shards=document.getElementById('shards');
   if(!reducedMotion.matches){
@@ -504,7 +517,12 @@ async function shatter(){
       // Clones are visual snapshots only; remove duplicate IDs after applying layout.
       copy.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);overflow:hidden';
       copy.querySelector('#cracks').style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5';
-      copy.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));copy.removeAttribute('id');
+      copy.querySelectorAll('clipPath[id]').forEach(n=>{
+        const old=n.id,fresh=old+'-shard-'+i;
+        copy.querySelectorAll('[clip-path]').forEach(g=>{if(g.getAttribute('clip-path')===`url(#${old})`)g.setAttribute('clip-path',`url(#${fresh})`);});
+        n.id=fresh;
+      });
+      copy.querySelectorAll('[id]').forEach(n=>{if(n.tagName!=='clipPath')n.removeAttribute('id');});copy.removeAttribute('id');
       animations.push(shard.animate([{transform:'translate3d(0,0,0) rotate(0)',opacity:1},{transform:`translate3d(${Math.cos(a)*240}px,${innerHeight*1.4}px,${70+i*12}px) rotate(${(i%2?1:-1)*(15+i*4)}deg)`,opacity:0}],{duration:1000+i*23,delay:i*13,easing:'cubic-bezier(.45,0,.85,.5)',fill:'forwards'}).finished);
     }
     pane.hidden=true;
@@ -515,18 +533,70 @@ async function shatter(){
   revealState='space';returnButton.hidden=false;
 }
 function strike(){
-  if(revealState!=='armed'||performance.now()-lastStrike<360)return;
+  if(revealState!=='armed'||striking||performance.now()-lastStrike<420)return;
   const bridge=space.contentWindow.crateSpace;
-  if(hits===4&&!bridge?.ready){statusLine.textContent=bridge?.error ? 'The constellation could not load. Reload the page to try again.' : 'The constellation is still loading. Try the final strike shortly.';return;}
-  lastStrike=performance.now();hits++;
+  if(hits===BREAK_HITS-1&&!bridge?.ready){statusLine.textContent=bridge?.error ? 'The constellation could not load. Reload the page to try again.' : 'The constellation is still loading. Try the final strike shortly.';return;}
+  lastStrike=performance.now();hits++;striking=true;strikePoint={...aim};
   rig.classList.remove('swing');void rig.offsetWidth;rig.classList.add('swing');
-  // Reserve the fifth strike now; apply the damage when the hammer lands.
-  if(hits===5){
+  // Reserve the third strike now; apply the damage when the hammer lands.
+  if(hits===BREAK_HITS){
     revealState='impact';
     if(audio)audio.pause();
     space.contentWindow.crateSpace.enter();
   }
-  setTimeout(()=>{growCracks();impactFeedback();statusLine.textContent=`${hits} / 5 strikes`;if(hits===5)shatter();}, reducedMotion.matches?0:185);
+  setTimeout(()=>{
+    drawLCDDamage();growCracks();impactFeedback();
+    statusLine.textContent=`${hits} / ${BREAK_HITS} strikes`;
+    if(hits===BREAK_HITS)shatter();
+    setTimeout(()=>{striking=false;rig.classList.remove('swing');placeChisel();},reducedMotion.matches?0:180);
+  }, reducedMotion.matches?0:185);
+}
+function placeChisel(){
+  // The SVG cutting edge is (30,140), scaled to 104 x 97.5 CSS pixels.
+  const p=striking?strikePoint:aim;
+  rig.style.transform=`translate3d(${p.x-19.5}px,${p.y-91}px,0)`;
+}
+pane.addEventListener('pointermove',e=>{
+  if(revealState!=='armed'||e.pointerType==='touch')return;
+  aim={x:e.clientX,y:e.clientY};placeChisel();
+});
+pane.addEventListener('pointerdown',e=>{
+  if(revealState!=='armed'||e.button!==0||e.target.closest('button,textarea,input,a'))return;
+  e.preventDefault();aim={x:e.clientX,y:e.clientY};placeChisel();strike();
+});
+function drawLCDDamage(){
+  const ns='http://www.w3.org/2000/svg',rand=fractureRandom;
+  const sx=1000/innerWidth,sy=1000/innerHeight;
+  const x=strikePoint.x*sx,y=strikePoint.y*sy;
+  const add=(tag,attrs,parent=cracks)=>{
+    const n=document.createElementNS(ns,tag);
+    for(const [key,value] of Object.entries(attrs))n.setAttribute(key,value);
+    parent.appendChild(n);return n;
+  };
+  // Broken pixel columns terminate along diagonal LCD failure boundaries.
+  const width=(95+hits*75)*sx, left=Math.max(0,x-width*.55);
+  const top=hits===1?Math.max(0,y-180*sy):0;
+  const bottom=hits===1?Math.min(1000,y+260*sy):1000;
+  const clipId='lcd-fracture-'+hits;
+  const defs=add('defs',{}),clip=add('clipPath',{id:clipId},defs);
+  add('polygon',{points:`${left},${top} ${left+width*.72},${top} ${x},${y} ${left+width},${bottom} ${left+width*.17},${bottom} ${x-20*sx},${y}`},clip);
+  const panel=add('g',{'clip-path':`url(#${clipId})`});
+  add('rect',{x:left,y:top,width,height:bottom-top,fill:'#070b10',opacity:.78},panel);
+  const colors=['#b2e6eb','#18a5e2','#2367b3','#e7e9cc','#ad357b','#67a188','#a5b24e'];
+  for(let px=left;px<left+width;px+=(.6+rand()*3.8)*sx){
+    add('rect',{x:px,y:top,width:(.35+rand()*1.2)*sx,height:bottom-top,fill:colors[Math.floor(rand()*colors.length)],opacity:.25+rand()*.6},panel);
+  }
+  for(let j=0;j<18*hits;j++){
+    const yy=y+(rand()-.5)*260*sy;
+    add('rect',{x:left,y:yy,width:width*(.3+rand()*.7),height:(.4+rand()*1.5)*sy,fill:rand()<.7?'#02050b':'#a8d4d9',opacity:.65},panel);
+  }
+  // Irregular black LCD bleed at the point of pressure, with a subtle blue edge.
+  const points=[];
+  for(let i=0;i<26;i++){
+    const a=i*Math.PI*2/26,r=9+rand()*16;
+    points.push(`${x+Math.cos(a)*r*sx},${y+Math.sin(a)*r*.55*sy}`);
+  }
+  add('polygon',{points:points.join(' '),fill:'#020409',stroke:'#344b61','stroke-width':.65});
 }
 document.getElementById('equip').onclick=equipTools;
 strikeButton.onclick=strike;
@@ -539,7 +609,8 @@ returnButton.onclick=()=>{
   space.contentWindow.crateSpace.pause();space.inert=true;space.tabIndex=-1;
   returnButton.hidden=true;pane.hidden=false;pane.inert=false;
   hits=0;lastStrike=-Infinity;revealState='chat';cracks.replaceChildren();
-  fractureRays=[];impact=null;fractureSeed=92417;
+  fractureRays=[];impact=null;fractureSeed=92417;striking=false;strikePoint=null;
+  rig.classList.remove('swing');
   document.getElementById('equip').disabled=false;
   statusLine.textContent='There’s a world behind this conversation.';
   document.getElementById('equip').focus();
