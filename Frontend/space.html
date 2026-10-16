@@ -392,7 +392,29 @@ function frame(){
 }
 
 $('#enter').addEventListener('click',()=>{ initAudio(); $('#gate').classList.add('hidden'); });
-load().then(()=>frame());
+const embedded = new URLSearchParams(location.search).get('embedded') === '1';
+window.crateSpace = {
+  ready: false,
+  enter(){
+    initAudio();
+    if(actx) actx.resume();
+    audioOn=true;
+    $('#gate').classList.add('hidden');
+  },
+  pause(){
+    audioOn=false;
+    if(actx) actx.suspend();
+    Object.keys(keys).forEach(k=>delete keys[k]);
+    vel.set(0,0,0);dragging=false;
+  }
+};
+addEventListener('blur',()=>{Object.keys(keys).forEach(k=>delete keys[k]);dragging=false;});
+if(embedded) $('#gate').classList.add('hidden');
+load().then(()=>{window.crateSpace.ready=true;frame();}).catch(()=>{
+  window.crateSpace.error=true;
+  $('#gate').classList.remove('hidden');
+  $('#gate p').textContent='The song constellation could not load. Please reload to try again.';
+});
 </script>
 </body>
 </html>

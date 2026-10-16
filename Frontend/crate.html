@@ -108,9 +108,35 @@ button.send[disabled]{opacity:.45; cursor:default}
   .vote{opacity:1}
   .artist{font-size:11px}
 }
+
+/* The chat is a breakable pane above the existing, real Taste Space. */
+body{overflow:hidden}
+#space-layer{position:fixed;inset:0;width:100%;height:100%;border:0;z-index:0;background:#0a0d14}
+#glass-pane{position:fixed;inset:0;z-index:2;display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
+#glass-pane main{min-height:0}
+#cracks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;filter:drop-shadow(0 1px 1px #000)}
+.reveal-tools{max-width:680px;margin:9px auto 0;display:flex;justify-content:flex-end;gap:10px;align-items:center}
+.reveal-tools button,#strike,#return-chat{font:inherit;color:var(--text);border:1px solid var(--border-2);background:var(--surface-2);border-radius:6px;padding:9px 13px;cursor:pointer}
+#reveal-status{font-size:11px;color:#aab7ca}
+#tool-rig{position:fixed;right:24px;bottom:150px;z-index:8;display:none;text-align:center}
+#tool-rig svg{display:block;width:150px;height:150px;overflow:visible;filter:drop-shadow(0 8px 8px #0008)}
+#tool-rig.equipped{display:block}
+#hammer{transform-origin:112px 119px}
+#tool-rig.swing #hammer{animation:hammer-strike .32s ease-in-out}
+@keyframes hammer-strike{0%{transform:rotate(0)}35%{transform:rotate(38deg)}65%{transform:rotate(-28deg)}100%{transform:rotate(0)}}
+#return-chat{position:fixed;right:18px;top:48px;z-index:9}
+#shards{position:fixed;inset:0;z-index:7;pointer-events:none;overflow:hidden;perspective:1000px}
+.glass-shard{position:absolute;inset:0;will-change:transform,opacity;pointer-events:none}
+.glass-shard #glass-pane{position:absolute}
+[hidden]{display:none!important}
+@media(max-width:620px){#tool-rig{right:10px;bottom:165px}#tool-rig svg{width:110px;height:110px}.reveal-tools{flex-wrap:wrap}#reveal-status{max-width:190px}}
+@media(prefers-reduced-motion:reduce){#tool-rig.swing #hammer{animation:none}}
+
 </style>
 </head>
 <body>
+<iframe id="space-layer" title="Interactive song constellation" src="./space?embedded=1" tabindex="-1" inert></iframe>
+<div id="glass-pane">
 
 <header>
   <h1>Crate</h1>
@@ -127,7 +153,24 @@ button.send[disabled]{opacity:.45; cursor:default}
     <textarea id="input" rows="1" placeholder="What do you feel like? e.g. something for cooking on a rainy Sunday"></textarea>
     <button class="send" id="send">Send</button>
   </div>
+  <div class="reveal-tools">
+    <span id="reveal-status" role="status">There’s a world behind this conversation.</span>
+    <button id="equip" type="button">Hammer &amp; chisel ↗</button>
+  </div>
 </footer>
+<svg id="cracks" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+</div>
+<div id="tool-rig">
+  <svg viewBox="0 0 160 150" aria-hidden="true">
+    <defs><linearGradient id="steel"><stop stop-color="#718096"/><stop offset=".45" stop-color="#eef6ff"/><stop offset="1" stop-color="#687b94"/></linearGradient></defs>
+    <path d="M29 134 L49 74 L61 78 L34 137Z" fill="url(#steel)" stroke="#c7d5e6"/>
+    <path d="M47 76 L52 57 L68 62 L61 81Z" fill="#b47c48" stroke="#e4b580"/>
+    <g id="hammer"><path d="M107 126 L68 57 L79 50 L119 119Z" fill="#ae7544" stroke="#edbd85" stroke-width="2"/><path d="M45 37 Q42 31 49 28 L88 15 Q94 14 97 22 L102 37 Q104 44 98 46 L60 61 Q53 63 51 56Z" fill="url(#steel)" stroke="#e7effc" stroke-width="2"/></g>
+  </svg>
+  <button id="strike" type="button">Strike · Space</button>
+</div>
+<div id="shards" aria-hidden="true" hidden></div>
+<button id="return-chat" type="button" hidden>← Back to Crate</button>
 
 <script>
 // Backend. Same convention as index.html's CLAP_SERVER.
@@ -289,6 +332,10 @@ async function boot(){
 async function say(){
   const text = input.value.trim();
   if (!text || busy) return;
+  if (isRevealRequest(text)) {
+    input.value = ""; input.style.height = "auto";
+    addMessage("me", text); equipTools(); return;
+  }
   busy = true; send.disabled = true;
   input.value = ""; input.style.height = "auto";
   addMessage("me", text);
@@ -310,7 +357,7 @@ async function say(){
     const row = addMessage("bot", "");
     row.querySelector(".body").appendChild(el("div", "err", e.message));
   } finally {
-    busy = false; send.disabled = false; input.focus();
+    busy = false; send.disabled = false; if(revealState==='chat') input.focus();
   }
 }
 
@@ -323,6 +370,110 @@ input.addEventListener("input", () => {
   input.style.height = Math.min(input.scrollHeight, 120) + "px";
 });
 
+// Local reveal commands never consume a model turn or change the chat session.
+const pane = document.getElementById('glass-pane');
+const space = document.getElementById('space-layer');
+const rig = document.getElementById('tool-rig');
+const cracks = document.getElementById('cracks');
+const statusLine = document.getElementById('reveal-status');
+const strikeButton = document.getElementById('strike');
+const returnButton = document.getElementById('return-chat');
+let revealState = 'chat', hits = 0, lastStrike = -Infinity;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+function isRevealRequest(text){
+  return /\b(hammer|chisel)\b|\bshow me (how (this|it) works|the (space|constellation))\b|\bbreak (the )?(glass|screen)\b/i.test(text);
+}
+function equipTools(){
+  if (revealState !== 'chat') return;
+  revealState = 'armed'; rig.classList.add('equipped');
+  document.getElementById('equip').disabled = true;
+  statusLine.textContent = 'Five strikes. Press Space or tap Strike.';
+  addMessage('bot', 'Here’s your hammer and chisel. Five strikes will open the space behind the chat. Press Space, or tap Strike.');
+  input.blur(); strikeButton.focus();
+}
+function growCracks(){
+  // Normalised coordinates keep existing fractures intact when the screen resizes.
+  const ox=790, oy=690;
+  const ns='http://www.w3.org/2000/svg';
+  const path=(points, width, opacity)=>{
+    const p=document.createElementNS(ns,'polyline');
+    p.setAttribute('points',points.map(p=>p.join(',')).join(' '));
+    p.setAttribute('fill','none');p.setAttribute('stroke','#d8ecff');
+    p.setAttribute('stroke-width',width);p.setAttribute('opacity',opacity);
+    p.setAttribute('vector-effect','non-scaling-stroke');cracks.appendChild(p);
+  };
+  for(let ray=0;ray<12;ray++){
+    const angle=ray*Math.PI/6+.16*Math.sin(ray*7);
+    const start=(hits-1)*150, end=hits*150;
+    const pts=[];
+    for(let r=start;r<=end;r+=15){
+      const wobble=Math.sin(r*.13+ray*4)*10;
+      pts.push([ox+Math.cos(angle)*r-Math.sin(angle)*wobble,oy+Math.sin(angle)*r+Math.cos(angle)*wobble]);
+    }
+    path(pts, hits===1?1.5:1,.85);
+    const b=pts[5], a=angle+(ray%2? .55:-.6);
+    path([b,[b[0]+Math.cos(a)*38,b[1]+Math.sin(a)*38],[b[0]+Math.cos(a+.2)*85,b[1]+Math.sin(a+.2)*85]],.65,.6);
+    if(ray>0 && hits>1){
+      const r=start+65;
+      path([[ox+Math.cos(angle)*r,oy+Math.sin(angle)*r],[ox+Math.cos(angle-.25)*(r+20),oy+Math.sin(angle-.25)*(r+20)],[ox+Math.cos(angle-.52)*r,oy+Math.sin(angle-.52)*r]],.6,.4);
+    }
+  }
+}
+async function shatter(){
+  revealState='breaking'; rig.classList.remove('equipped');
+  if(audio) audio.pause();
+  // Same-origin bridge keeps audio activation within the fifth user gesture.
+  space.contentWindow.crateSpace.enter();
+  pane.inert=true;
+  const shards=document.getElementById('shards');
+  if(!reducedMotion.matches){
+    shards.hidden=false;
+    const animations=[];
+    for(let i=0;i<16;i++){
+      const a=i*Math.PI/8, b=(i+1)*Math.PI/8;
+      const poly=`polygon(79% 69%, ${79+180*Math.cos(a)}% ${69+180*Math.sin(a)}%, ${79+180*Math.cos(b)}% ${69+180*Math.sin(b)}%)`;
+      const shard=document.createElement('div');shard.className='glass-shard';shard.style.clipPath=poly;
+      const copy=pane.cloneNode(true);copy.inert=true;
+      copy.querySelectorAll('textarea').forEach(t=>t.value=input.value);
+      shard.appendChild(copy);shards.appendChild(shard);
+      copy.querySelector('main').scrollTop=document.getElementById('main').scrollTop;
+      // Clones are visual snapshots only; remove duplicate IDs after applying layout.
+      copy.style.cssText='position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);overflow:hidden';
+      copy.querySelector('#cracks').style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5';
+      copy.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));copy.removeAttribute('id');
+      animations.push(shard.animate([{transform:'translate3d(0,0,0) rotate(0)',opacity:1},{transform:`translate3d(${Math.cos(a)*240}px,${innerHeight*1.4}px,${70+i*12}px) rotate(${(i%2?1:-1)*(15+i*4)}deg)`,opacity:0}],{duration:1000+i*23,delay:i*13,easing:'cubic-bezier(.45,0,.85,.5)',fill:'forwards'}).finished);
+    }
+    pane.hidden=true;
+    await Promise.allSettled(animations);
+    shards.replaceChildren();shards.hidden=true;
+  } else pane.hidden=true;
+  space.inert=false;space.tabIndex=0;space.focus();
+  revealState='space';returnButton.hidden=false;
+}
+function strike(){
+  if(revealState!=='armed'||performance.now()-lastStrike<360)return;
+  const bridge=space.contentWindow.crateSpace;
+  if(hits===4&&!bridge?.ready){statusLine.textContent=bridge?.error ? 'The constellation could not load. Reload the page to try again.' : 'The constellation is still loading. Try the final strike shortly.';return;}
+  lastStrike=performance.now();hits++;
+  rig.classList.remove('swing');void rig.offsetWidth;rig.classList.add('swing');
+  growCracks();statusLine.textContent=`${hits} / 5 strikes`;
+  if(hits===5)shatter();
+}
+document.getElementById('equip').onclick=equipTools;
+strikeButton.onclick=strike;
+addEventListener('keydown',e=>{
+  if(e.code!=='Space'||revealState!=='armed'||e.repeat)return;
+  if(e.target.closest('textarea,input,[contenteditable="true"]'))return;
+  e.preventDefault();strike();
+});
+returnButton.onclick=()=>{
+  space.contentWindow.crateSpace.pause();space.inert=true;space.tabIndex=-1;
+  returnButton.hidden=true;pane.hidden=false;pane.inert=false;
+  hits=0;lastStrike=-Infinity;revealState='chat';cracks.replaceChildren();
+  document.getElementById('equip').disabled=false;
+  statusLine.textContent='There’s a world behind this conversation.';
+  document.getElementById('equip').focus();
+};
 boot();
 </script>
 </body>
