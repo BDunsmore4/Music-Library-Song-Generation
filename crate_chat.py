@@ -96,6 +96,18 @@ afterwards.
 - Something conversational, or a question about how any of this works → just \
 answer. You do not have to call a tool at all.
 
+NEVER LEAVE A REJECTED RESULT ON SCREEN
+
+The user sees whatever you last put in front of them, so searching and \
+recommending are different acts. If a search comes back wrong — wrong era, \
+wrong genre, not what they asked — do not describe better tracks in prose \
+while the bad ones sit underneath. Call `present` with the track_ids you \
+actually mean, or with an empty list if nothing is worth showing, and say so.
+
+Only recommend tracks you have confirmed are in the library. Your own \
+knowledge is the right way to *propose* candidates, but confirm them with \
+library_lookup before naming them, and present the ids it returns.
+
 Return as many tracks as the request implies: one for a play, a list for a \
 catalogue question, three or four for a search. Set `k` deliberately rather \
 than taking the default, and set `wildcard` false whenever they want a tight \
@@ -316,6 +328,24 @@ TOOLS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "present",
+        "description": (
+            "Decide exactly what the user is shown, in your chosen order. Pass "
+            "track_ids taken from any earlier tool result. Use this whenever "
+            "the tracks you want to recommend are not simply the last search's "
+            "output — including when a search returned nothing worth showing, "
+            "in which case pass an empty list and nothing is displayed. "
+            "Searching is not the same as recommending."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "track_ids": {"type": "array", "items": {"type": "string"},
+                              "description": "empty list shows nothing"},
+            },
+            "required": ["track_ids"],
+        },
+    },
+    {
         "name": "refine",
         "description": (
             "Adjust the current search from the user's feedback. Moves the query "
@@ -479,6 +509,13 @@ class CrateChat(object):
 
             if name == "library_overview":
                 return c.overview()
+
+            if name == "present":
+                shown = c.present(s, args.get("track_ids") or [])
+                self.last_results = shown
+                return dict(showing=len(shown),
+                            tracks=[dict(track_id=t["track_id"], name=t["name"],
+                                         artist=t["artist"]) for t in shown])
 
             if name == "refine":
                 res, applied = c.refine(

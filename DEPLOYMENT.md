@@ -479,3 +479,24 @@ Ottorino Respighi, which turned a seven-artist psytrance check into 158 false
 positives the assistant would have believed. It also returns `per_query` counts
 and an `absent` list, so "you have none of the usual psytrance names, shall I
 find the nearest thing by sound?" is answerable truthfully.
+
+### Searching is not recommending
+
+The user sees `last_results`, which used to be a side effect of whichever tool
+ran last. So the assistant could judge a search correctly, say so, recommend
+better tracks in prose — and the UI would go on displaying the ones it had just
+rejected.
+
+That is exactly what happened on "can you play some happy 80s dance tracks".
+The acoustic search returned Jeroen Search, SkyZlimit and The Chainsmokers;
+the model recognised they were wrong, named six genuinely present 80s tracks
+instead (all of them verified real — Michael Jackson, Donna Summer, Eurythmics,
+Wham!, Earth Wind & Fire), and the shelf underneath still showed the modern
+electronic ones. Its judgement was right and had no way to reach the screen.
+
+`present(track_ids)` fixes it: the assistant sets exactly what is displayed, in
+its own order, from ids returned by any earlier tool. An empty list shows
+nothing, which is the honest answer when a search found nothing worth showing.
+The prompt now forbids leaving a rejected result on screen, and requires that
+anything it recommends be confirmed present with `library_lookup` first — its
+knowledge proposes, the metadata confirms, `present` decides.

@@ -755,6 +755,34 @@ class Crate(object):
                                  else str(r.get("preview_url"))),
                     profile=self.profile(j), row=j), len(rows)
 
+    def present(self, session, track_ids):
+        """Set exactly what the user is shown, in this order. No wildcard.
+
+        Searching and presenting used to be the same act: whatever the last
+        tool returned was rendered, so the assistant could tell you a result
+        was wrong and still have it sitting on the shelf underneath — which is
+        precisely what happened with "happy 80s dance tracks". It judged the
+        acoustic matches correctly, named six genuinely present 80s tracks
+        instead, and the UI went on displaying the four it had just rejected.
+
+        An empty list presents nothing, which is the right answer when a search
+        found nothing worth showing.
+        """
+        out = []
+        for tid in (track_ids or []):
+            row = self._id_to_row.get(str(tid))
+            if row is None:
+                continue
+            r = self.meta.iloc[row]
+            out.append(dict(track_id=str(r["id"]), name=str(r["name"]),
+                            artist=str(r["artists"]), album=str(r.get("album", "")),
+                            preview_url=(None if str(r.get("preview_url")) == "nan"
+                                         else str(r.get("preview_url"))),
+                            score=1.0, profile=self.profile(row), row=row))
+            session.seen.add(row)
+        self.last_results = out
+        return out
+
     def overview(self, top=12):
         """Orientation: how big the library is and who is most of it."""
         counts = self.meta["artists"].astype(str).str.split(",").str[0].str.strip()
