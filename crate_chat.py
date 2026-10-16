@@ -142,6 +142,30 @@ unless they signal otherwise ("way more", "a touch", "far too").
 If their critique does not fit any axis, put their own phrasing into refine()'s \
 `descriptions` instead of forcing it onto the nearest axis.
 
+WHAT YOU KNOW ABOUT A TRACK, AND WHAT WAS MEASURED
+
+Every result carries a `profile`: where that track sits in this library on each \
+attribute axis, as a percentile from 0 to 100. These come from the audio \
+embedding itself, not from metadata or from a title — they are measurements.
+
+Use them, and use what you actually know about a recording too; your knowledge \
+of a performance is usually richer than a percentile and it makes for better \
+writing. But:
+
+- A percentile is a position in a distribution, not a label, and an individual \
+track can read oddly even on a sound axis. So: where your recollection \
+disagrees with a *validated* axis, go with the axis and say what it shows. \
+Where it disagrees with an unvalidated one, say both and let it stand — "the \
+measurement puts this well up the electronic end, though I know it as a solo \
+piano piece" is the right move, not silently picking a side.
+- Never pretend you measured something you actually remembered.
+- If you do not recognise a track, describe it from the profile alone. Never \
+invent instrumentation, mood or era you cannot support from the measurement.
+- Never print the numbers. "almost no voice, very warm, barely any energy" is \
+the register. "vocal: 3%" is not.
+
+{axis_trust}
+
 HONESTY RULES
 
 - Never state a similarity score to the user, and never say CLAP "knows" or \
@@ -278,6 +302,8 @@ def _fmt(results):
     out = []
     for r in results:
         d = dict(track_id=r["track_id"], name=r["name"], artist=r["artist"])
+        if r.get("profile"):
+            d["profile"] = r["profile"]
         if r.get("wildcard"):
             d["wildcard"] = True
         out.append(d)
@@ -306,7 +332,27 @@ class CrateChat(object):
         self._client = None
 
     def system_prompt(self):
-        return SYSTEM.format(n=self.crate.n, axes=", ".join(self.crate.axis_names()))
+        return SYSTEM.format(n=self.crate.n, axes=", ".join(self.crate.axis_names()),
+                             axis_trust=self._axis_trust())
+
+    def _axis_trust(self):
+        """How much weight each axis deserves, taken from the validation report
+        rather than hardcoded, so it cannot drift away from what was measured."""
+        rep = self.crate.axis_report or {}
+        good = sorted(a for a in self.crate.axes
+                      if rep.get(a, {}).get("verdict") == "verified")
+        soft = sorted(a for a in self.crate.axes
+                      if rep.get(a, {}).get("verdict") == "unverified")
+        lines = []
+        if good:
+            lines.append("Axes checked against features measured from the actual "
+                         "waveforms, so they mean what they say: %s. Lean on these."
+                         % ", ".join(good))
+        if soft:
+            lines.append("Axes with no honest acoustic proxy, judged by their "
+                         "extremes only: %s. Useful, but hedge rather than assert."
+                         % ", ".join(soft))
+        return "\n".join(lines) if lines else ""
 
     # -- tool dispatch -------------------------------------------------------
     def call_tool(self, name, args):

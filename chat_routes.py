@@ -180,6 +180,7 @@ def _public(results):
                         artist=r.get("artist"), album=r.get("album"),
                         preview_url=r.get("preview_url"),
                         wildcard=bool(r.get("wildcard")),
+                        profile=r.get("profile") or {},
                         relevance=round(0.15 + 0.85 * (sc - lo) / span, 3),
                         x=xy[0], y=xy[1],
                         x3=(xyz[0] if xyz else None),

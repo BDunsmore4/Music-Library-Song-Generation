@@ -398,6 +398,7 @@ class Crate(object):
         self._artist_norm = self.meta["artists"].astype(str).map(_norm_name)
         self._name_norm = self.meta["name"].astype(str).map(_norm_name)
         self._reducer = None
+        self._axis_pct = None
         self._nn_ref = None
         self.last_fit = None
         self.last_results = []
@@ -409,6 +410,29 @@ class Crate(object):
             self._adapter, self._adapter_eta = crate_store.load_adapter()
         except Exception:
             self._adapter, self._adapter_eta = None, None
+
+    # -- where a track sits on each axis, as a library percentile -----------
+    def _axis_percentiles(self):
+        """Projection of every track onto every validated axis, plus a sorted
+        copy so a percentile is one searchsorted.
+
+        8 axes x 7,106 tracks is a quarter of a megabyte, built once. This is
+        what lets the assistant describe a track from measurement rather than
+        from whatever it happens to remember about the recording.
+        """
+        if self._axis_pct is None:
+            self._axis_pct = {}
+            for name, d in self.axes.items():
+                proj = self.X @ d
+                self._axis_pct[name] = (proj, np.sort(proj))
+        return self._axis_pct
+
+    def profile(self, row):
+        """{axis: percentile 0-100} for one library row."""
+        out = {}
+        for name, (proj, srt) in self._axis_percentiles().items():
+            out[name] = int(round(100.0 * np.searchsorted(srt, proj[row]) / len(srt)))
+        return out
 
     # -- how well does the library actually answer this query? ---------------
     def _reference(self, kind, sample=800, seed=0):
@@ -551,7 +575,8 @@ class Crate(object):
                             artist=str(row["artists"]), album=str(row.get("album", "")),
                             preview_url=(None if str(row.get("preview_url")) == "nan"
                                          else str(row.get("preview_url"))),
-                            score=round(float(s[j]), 4), row=j))
+                            score=round(float(s[j]), 4), row=j,
+                            profile=self.profile(j)))
             if len(out) >= k:
                 break
         for r in out:
@@ -592,6 +617,7 @@ class Crate(object):
                     preview_url=(None if str(row.get("preview_url")) == "nan"
                                  else str(row.get("preview_url"))),
                     score=round(float(s[j]), 4), row=j, wildcard=True,
+                    profile=self.profile(j),
                     rank=int(np.where(order == j)[0][0]))
 
     def _commit(self, session, q, label, k, exclude=(), kind="audio", op=None,

@@ -58,6 +58,7 @@ Usage:
     python taste_axes.py build        # build + orthogonalise + cache
     python taste_axes.py measure      # download a sample, measure waveforms
     python taste_axes.py validate     # correlate axes against those waveforms
+    python taste_axes.py stability    # label-free screen for the unprovable ones
 """
 
 import os
@@ -428,6 +429,8 @@ if __name__ == "__main__":
         measure()
     elif cmd == "validate":
         validate()
+    elif cmd == "stability":
+        stability()
     else:
         print(__doc__)
 
@@ -447,3 +450,40 @@ def trusted(axes=None, report_path=None):
         keep = [n for n in axes if rep.get(n, {}).get("verdict") != "failed"]
         return dict((n, axes[n]) for n in keep), rep
     return dict(axes), {}
+
+
+def stability(axes=None, min_tracks=8, verbose=True):
+    """Label-free screen: does an axis measure a stable property of the music?
+
+    An axis tracking something real should vary less within one artist's
+    catalogue than across the whole library, because artists are relatively
+    consistent. One whose within-artist spread approaches the library's is
+    measuring noise. This catches the axes `validate()` cannot — the ones in
+    NO_PROXY, which have no waveform feature to be checked against.
+
+    Observed on the 7,106-track library (203 artists with 8+ tracks):
+
+        energy 0.36  happiness 0.49  vocal 0.52  density 0.54
+        warmth 0.54  electronic 0.61  groove 0.63  aggression 0.74
+
+    All stable enough to keep; `aggression` is the weakest and worth rebuilding
+    first if its results ever look arbitrary.
+    """
+    axes = axes if axes is not None else load()
+    X, meta = load_library()
+    first = meta["artists"].astype(str).str.lower().str.split(",").str[0].str.strip()
+    groups = [g.values for _, g in meta.groupby(first).groups.items()]
+    groups = [g for g in groups if len(g) >= min_tracks]
+    out = {}
+    for name in sorted(axes):
+        proj = X @ axes[name]
+        lib = float(proj.std())
+        within = float(np.mean([proj[g].std() for g in groups]))
+        out[name] = dict(within=within, library=lib, ratio=within / (lib or 1.0))
+    if verbose:
+        print("%d artists with %d+ tracks\n" % (len(groups), min_tracks))
+        for name, r in sorted(out.items(), key=lambda kv: kv[1]["ratio"]):
+            verdict = ("stable" if r["ratio"] < 0.72
+                       else "weak" if r["ratio"] < 0.85 else "NOISE — drop")
+            print("  %-12s ratio %.2f   %s" % (name, r["ratio"], verdict))
+    return out
