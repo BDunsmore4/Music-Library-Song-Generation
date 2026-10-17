@@ -246,19 +246,30 @@ def generate(crate_model, prompt):
         return {"generated": False, "reason": "failed",
                 "message": "Generation failed (%s)." % str(e)[:90]}
 
+    meta = {"id": "generated:%d" % int(time.time()), "name": prompt[:90],
+            "artists": "Generated", "album": "", "duration_ms": ELEVEN_MS,
+            "preview_url": "", "isrc": ""}
+    row_for_manifest, _ = crate_model.add_track(meta, vec, kind="generated")
+
     url = ""
     try:
         import r2_client
         url = r2_client.upload_mp3(audio)
-        r2_client.append_to_manifest({"label": prompt, "audio_url": url,
-                                      "point_type": "generated"})
+        # Store the embedding and map position too, exactly as app.py's
+        # /generate does. Without them the record is unplottable on the taste
+        # map and unloadable by the Crate, which is why earlier generations
+        # became invisible the moment the process restarted.
+        pos = crate_model.neighbour_position(row_for_manifest)
+        r2_client.append_to_manifest({
+            "label": prompt, "audio_url": url, "point_type": "generated",
+            "embedding": [float(v) for v in vec],
+            "x": pos.get("x"), "y": pos.get("y")})
     except Exception as e:
         print("[acquire] generated track not persisted to R2: %s" % e)
 
-    meta = {"id": "generated:%d" % int(time.time()), "name": prompt[:90],
-            "artists": "Generated", "album": "", "duration_ms": ELEVEN_MS,
-            "preview_url": url, "isrc": ""}
-    row, _ = crate_model.add_track(meta, vec, kind="generated")
+    row = row_for_manifest
+    if url:
+        crate_model.meta.at[row, "preview_url"] = url
     try:
         import crate_store
         crate_store.log_acquisition("generate", meta["id"], prompt[:120])

@@ -165,9 +165,12 @@ limited, say plainly that each generation costs money, rather than being vague \
 about "limits". `acquisition_budget` tells you what is left and when the next \
 is available, so quote that instead of guessing.
 
-A generated track is not one of theirs. Nobody recorded it and nobody chose \
-it, so never let it sit in a list as though it were part of the collection — \
-say what it is.
+A generated track is not one of theirs — nobody recorded it and nobody chose \
+it — so always label it as generated. Label it, do not hide it: a track made \
+earlier is still a legitimate answer, and if someone asks for the happy dirge \
+they made last week, find it and play it. Tracks generated or searched on the \
+website are in the library too, under the artists "Generated" and "Searched", \
+so library_lookup finds them by name.
 
 HOW UNUSUAL A TRACK IS
 

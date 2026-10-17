@@ -415,6 +415,7 @@ class Crate(object):
         except Exception:
             self._adapter, self._adapter_eta = None, None
         self._load_added()      # tracks added in earlier sessions, from the volume
+        self._load_r2_manifests()   # everything generated or searched on the site
 
     # -- where a track sits on each axis, as a library percentile -----------
     def _axis_percentiles(self):
@@ -1029,6 +1030,64 @@ class Crate(object):
         if persist:
             self._persist_added(row, v, kind)
         return j, True
+
+    def _load_r2_manifests(self):
+        """Pull in everything generated or searched through the website.
+
+        These live in two public R2 manifests that the taste map already reads,
+        each record carrying its own 512-d embedding and 2-D coordinates. The
+        Crate never looked at them, so a track generated last week was
+        invisible to the chat — you could not ask for the happy dirge you had
+        just made.
+
+        Read over the public base rather than the S3 API: no credentials
+        needed, and these are durable in a way the store volume is not, so
+        this works even when CRATE_STORE_DIR is unset and added_tracks.jsonl
+        is being wiped on every deploy.
+        """
+        base = os.environ.get("R2_PUBLIC_BASE_URL",
+                              "https://pub-b3e7f539051b40f693e949e81b31dd44.r2.dev")
+        if not base or os.environ.get("CRATE_SKIP_R2") == "1":
+            return 0
+        import json as _json
+        try:
+            import requests
+        except Exception:
+            return 0
+        added = skipped = 0
+        for key, kind in (("generated.json", "generated"), ("searched.json", "searched")):
+            try:
+                r = requests.get("%s/%s" % (base.rstrip("/"), key), timeout=20)
+                if r.status_code != 200:
+                    continue
+                records = r.json()
+            except Exception as e:
+                print("[crate] could not read %s: %s" % (key, str(e)[:70]))
+                continue
+            for rec in records if isinstance(records, list) else []:
+                emb = rec.get("embedding")
+                if not emb or len(emb) != 512:
+                    skipped += 1          # older records predate stored vectors
+                    continue
+                url = rec.get("audio_url") or ""
+                tid = "%s:%s" % (kind, abs(hash(url or rec.get("label", ""))) % (10 ** 12))
+                if tid in self._id_to_row:
+                    continue
+                label = str(rec.get("label") or rec.get("name") or "Untitled")
+                meta = {"id": tid, "name": rec.get("name") or label,
+                        "artists": rec.get("artist") or
+                                   ("Generated" if kind == "generated" else "Searched"),
+                        "album": "", "duration_ms": "", "preview_url": url, "isrc": ""}
+                try:
+                    _, fresh = self.add_track(meta, np.asarray(emb, dtype="float32"),
+                                              kind=kind, persist=False)
+                    added += fresh
+                except Exception:
+                    skipped += 1
+        if added or skipped:
+            print("[crate] R2 manifests: +%d track(s), %d skipped (no embedding)"
+                  % (added, skipped))
+        return added
 
     def neighbour_position(self, row, k=5):
         """2-D and 3-D coordinates for a track that has none, taken from the

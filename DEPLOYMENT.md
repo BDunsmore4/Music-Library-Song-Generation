@@ -647,3 +647,31 @@ and the assistant has to say so.
 It is also told never to generate without announcing it first, and to explain —
 when asked — that the cap exists because each call costs real money, rather
 than being vague about "limits".
+
+### Tracks made on the website are part of the library now
+
+Two public R2 manifests hold everything ever generated or searched through the
+site — `generated.json` and `searched.json` — each record carrying its own
+512-d embedding and map coordinates. The Crate never read them, so a track
+generated last week was invisible to the chat: you could not ask for the happy
+dirge you had just made.
+
+It now loads both at start-up, over the public base URL rather than the S3 API,
+so no credentials are needed. Observed: **+39 tracks** (13 generated, 26
+searched), 12 skipped because they predate stored embeddings. Searched records
+keep their real artist; generated ones are filed under "Generated".
+
+This is also the durable path. R2 survives a deploy whether or not
+`CRATE_STORE_DIR` points at a volume, so generations persist even while that is
+still unset.
+
+`acquire.generate` now writes the embedding and coordinates into the manifest
+as `app.py`'s `/generate` always did. Without them a record is unplottable on
+the taste map and unloadable here, which is why earlier generations vanished
+the moment the process restarted.
+
+The prompt was also telling the assistant never to let a generated track "sit
+in a list as though it were part of the collection", which reads as *hide it*.
+It now says label it, do not hide it — a track made earlier is a legitimate
+answer, and if someone asks for the dirge they made last week it should find it
+and play it.
