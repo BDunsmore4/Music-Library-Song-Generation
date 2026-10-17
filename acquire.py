@@ -53,9 +53,13 @@ def budget():
     a_ok, a_used, a_cap, a_wait = _limit("add", ADD_PER_HOUR)
     g_ok, g_used, g_cap, g_wait = _limit("generate", GENERATE_PER_HOUR)
     return {
+        "apple_configured": apple_configured(),
+        "storefront": STOREFRONT,
         "additions": {"used": a_used, "limit": a_cap,
                       "remaining": max(0, a_cap - a_used),
-                      "minutes_until_next": round(a_wait / 60) if not a_ok else 0},
+                      "minutes_until_next": round(a_wait / 60) if not a_ok else 0,
+                      "note": "a failed or not-found search costs nothing; only a "
+                              "successful addition counts against this"},
         "generation": {"used": g_used, "limit": g_cap,
                        "remaining": max(0, g_cap - g_used),
                        "minutes_until_next": round(g_wait / 60) if not g_ok else 0,
@@ -66,26 +70,58 @@ def budget():
 
 # ── a real track ─────────────────────────────────────────────────────────────
 
-def search_catalogue(query, limit=5):
-    """Apple Music song search. Returns candidates with previews only."""
-    import requests
+_SEARCH_CACHE = {}          # query -> (expires, results). Repeated attempts are free.
+_SEARCH_TTL = 900
+
+
+def apple_configured():
     try:
         import apple_token
-        token = apple_token.get_developer_token()
+        return apple_token.is_configured()
     except Exception:
-        return []
+        return False
+
+
+def search_catalogue(query, limit=5):
+    """Apple Music song search.
+
+    Returns (results, problem). `problem` is None on success — including a
+    genuine zero-result search, which is NOT a problem. It is a short code only
+    when we could not ask: missing credentials, a token failure, or a provider
+    error.
+
+    Collapsing those into an empty list is what produced a confident, wrong
+    diagnosis: the assistant was told "nothing matches that album" when the
+    truth was "this server has no Apple credentials", and it relayed that to
+    the user as a licensing problem at Apple's end.
+    """
+    import requests
+    hit = _SEARCH_CACHE.get(query)
+    if hit and hit[0] > time.time():
+        return hit[1], None
+    try:
+        import apple_token
+        if not apple_token.is_configured():
+            return [], "not_configured"
+        token = apple_token.get_developer_token()
+    except Exception as e:
+        print("[acquire] apple token failed: %s" % e)
+        return [], "token_failed"
     try:
         r = requests.get("https://api.music.apple.com/v1/catalog/%s/search" % STOREFRONT,
                          headers={"Authorization": "Bearer %s" % token}, timeout=20,
                          params={"term": query, "types": "songs", "limit": max(limit, 10)})
-        r.raise_for_status()
-        out = []
-        for s in (r.json().get("results", {}).get("songs", {}).get("data", [])):
-            a = s.get("attributes", {})
+        if r.status_code >= 400:
+            print("[acquire] apple search %s: %s" % (r.status_code, r.text[:160]))
+            return [], "provider_%d" % r.status_code
+        out, no_preview = [], 0
+        for s_ in (r.json().get("results", {}).get("songs", {}).get("data", [])):
+            a = s_.get("attributes", {})
             prev = (a.get("previews") or [{}])[0].get("url")
             if not prev:
+                no_preview += 1
                 continue                      # no audio, nothing to embed
-            out.append(dict(id="apple:" + str(s.get("id")), name=a.get("name", ""),
+            out.append(dict(id="apple:" + str(s_.get("id")), name=a.get("name", ""),
                             artists=a.get("artistName", ""), album=a.get("albumName", ""),
                             duration_ms=a.get("durationInMillis", ""),
                             preview_url=prev, isrc=a.get("isrc", ""),
@@ -93,9 +129,11 @@ def search_catalogue(query, limit=5):
                             genres="|".join(a.get("genreNames") or [])))
             if len(out) >= limit:
                 break
-        return out
-    except Exception:
-        return []
+        _SEARCH_CACHE[query] = (time.time() + _SEARCH_TTL, out)
+        return out, ("all_without_preview" if not out and no_preview else None)
+    except Exception as e:
+        print("[acquire] apple search failed: %s" % e)
+        return [], "network"
 
 
 def add_from_catalogue(crate_model, query, pick=0):
@@ -107,11 +145,27 @@ def add_from_catalogue(crate_model, query, pick=0):
                            "The next one is free in about %d minutes."
                            % (cap, round(wait / 60))}
 
-    found = search_catalogue(query, limit=5)
+    found, problem = search_catalogue(query, limit=5)
+    if problem == "not_configured":
+        return {"added": False, "reason": "not_configured",
+                "message": "This server has no Apple Music credentials, so I "
+                           "cannot look anything up. Nothing to do with the "
+                           "record — set APPLE_TEAM_ID, APPLE_KEY_ID and "
+                           "APPLE_PRIVATE_KEY."}
+    if problem in ("token_failed", "network") or (problem or "").startswith("provider_"):
+        return {"added": False, "reason": problem,
+                "message": "Could not reach Apple Music (%s). This is a problem "
+                           "at our end or theirs, not a sign the record is "
+                           "unavailable — worth retrying." % problem}
+    if problem == "all_without_preview":
+        return {"added": False, "reason": "no_previews",
+                "message": "Apple has matches for %r but none carry a playable "
+                           "preview in the %s storefront, so there is no audio "
+                           "to embed. A different storefront may have them."
+                           % (query, STOREFRONT)}
     if not found:
         return {"added": False, "reason": "not_found",
-                "message": "Nothing on Apple Music matches %r with a playable "
-                           "preview." % query}
+                "message": "Nothing on Apple Music matches %r." % query}
     chosen = found[min(max(pick, 0), len(found) - 1)]
 
     existing = crate_model._id_to_row.get(str(chosen["id"]))

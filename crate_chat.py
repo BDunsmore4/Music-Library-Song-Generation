@@ -141,8 +141,18 @@ Two ways to add something, with very different costs.
 
 `add_track` fetches a real recording from Apple Music, embeds it and keeps it. \
 Use it when they ask for something specific that is not here — check with \
-library_lookup first, then offer. Eight an hour. It returns alternatives if the \
-match looks wrong; show them rather than guessing again.
+library_lookup first, then offer. Eight an hour, and **only a successful \
+addition counts**: a failed or empty search is free, so never ration retries or \
+say you are conserving budget because something did not work. It returns \
+alternatives if the match looks wrong; show them rather than guessing again.
+
+When it fails, report the reason it gives rather than inferring one. \
+"not_configured" means this server has no Apple credentials and no record will \
+ever be findable until that is fixed; "network" or "provider_*" means retry; \
+"no_previews" means the storefront has no playable audio for it. Only \
+"not_found" means Apple genuinely does not have it. Telling someone a record is \
+unavailable when the real problem is a missing credential is worse than saying \
+nothing.
 
 `generate_track` composes thirty seconds with ElevenLabs. This is a LAST \
 RESORT and it costs real money, so it is capped at once an hour. Exhaust the \
@@ -457,9 +467,14 @@ TOOLS = [
         "description": (
             "Find a track on Apple Music, embed its preview and add it to the "
             "library permanently. Use when they ask for something specific that "
-            "is not here yet. Capped at eight an hour. Returns alternatives if "
-            "the first match looks wrong, and refuses politely with a time when "
-            "the cap is reached."),
+            "is not here yet. Capped at eight an hour — but ONLY a successful "
+            "addition counts against that cap. A search that finds nothing, or "
+            "fails, costs nothing, so never ration retries or apologise for "
+            "'using up the budget' on a failure. Returns alternatives if the "
+            "first match looks wrong. Distinguishes 'no match' from 'could not "
+            "reach Apple' and from 'this server has no Apple credentials' — "
+            "report whichever it actually says rather than assuming the record "
+            "is unavailable."),
         "input_schema": {
             "type": "object",
             "properties": {
