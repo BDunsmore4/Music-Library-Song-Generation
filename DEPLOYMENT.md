@@ -605,3 +605,45 @@ clustering computed 50 million pairs per candidate k. Now sampled at 1,500
 points, with MiniBatchKMeans above 2,000 tracks, and the library clustering
 cached since the library does not change between calls — only the `visited`
 flags do.
+
+## 12. Growing the library
+
+Two ways a track joins the collection, with very different costs and so very
+different limits. Both are enforced from the append-only store log, not from
+memory, so they survive a restart and are shared across every session — an
+in-process counter would reset on each deploy and be per-user, which is not a
+limit at all.
+
+| tool | what it does | cap |
+|---|---|---|
+| `add_track` | finds it on Apple Music, embeds the preview, keeps it | **8 / hour** |
+| `generate_track` | composes 30s with ElevenLabs | **1 / hour** |
+| `acquisition_budget` | what is left and when the next is free | — |
+
+Tune with `CRATE_ADD_PER_HOUR` and `CRATE_GENERATE_PER_HOUR`.
+
+An added track is live immediately: searchable, clusterable, and with a map
+position taken from the mean of its five nearest neighbours rather than a UMAP
+transform — the reducer costs seconds per call, and a projection fitted without
+the new point is no more truthful than sitting it among the tracks it actually
+resembles. Verified end to end: adding Burial's "Archangel" took the library
+from 7,106 to 7,107, `search_by_artist` immediately reported
+`seeded_from=library` instead of falling back to Apple, and it scored
+isolation 92 — genuinely unusual here, which is the right answer.
+
+**Additions persist to the volume, not the repo.** They are appended to
+`$CRATE_STORE_DIR/added_tracks.jsonl` with the embedding base64-encoded, and
+re-attached at start-up. Railway's filesystem is ephemeral, so without a volume
+every addition vanishes on the next deploy — the same requirement as the
+conversation log. Confirmed across a restart.
+
+Generation requires `ELEVENLABS_API_KEY`; without it the tool says so plainly
+rather than failing. Generated tracks are marked `source="generated"` and
+uploaded to R2 through the existing `r2_client`, reusing the path `/generate`
+already uses. The prompt forbids letting a generated track sit in a list as
+though it were part of the collection: nobody recorded it and nobody chose it,
+and the assistant has to say so.
+
+It is also told never to generate without announcing it first, and to explain —
+when asked — that the cap exists because each call costs real money, rather
+than being vague about "limits".

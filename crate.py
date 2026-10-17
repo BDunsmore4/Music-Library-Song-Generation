@@ -414,6 +414,7 @@ class Crate(object):
             self._adapter, self._adapter_eta = crate_store.load_adapter()
         except Exception:
             self._adapter, self._adapter_eta = None, None
+        self._load_added()      # tracks added in earlier sessions, from the volume
 
     # -- where a track sits on each axis, as a library percentile -----------
     def _axis_percentiles(self):
@@ -984,6 +985,115 @@ class Crate(object):
                 visited=bool(set(idx) & seen_rows)))
         return dict(scope=scope, n=len(rows), splits=True,
                     silhouette=round(sil, 3), groups=groups)
+
+    # -- growing the library ------------------------------------------------
+    def add_track(self, meta_row, vector, kind="added", persist=True):
+        """Append one embedded track to the live index.
+
+        Appends to X and the metadata frame, rebuilds the derived lookups and
+        drops every cached derivative — the axis percentiles, the k-NN
+        isolation table, the reference distributions and the library
+        clustering are all computed from X and would otherwise silently
+        describe the previous library.
+
+        Map coordinates are the mean of the new track's five nearest
+        neighbours rather than a UMAP transform: the reducer costs seconds per
+        call and a projection fitted without this point is not meaningfully
+        more truthful than sitting it among the tracks it actually resembles.
+        """
+        import pandas as pd
+        v = unit(np.asarray(vector, dtype="float32").reshape(-1))
+        tid = str(meta_row.get("id") or id(meta_row))
+        if tid in self._id_to_row:
+            return self._id_to_row[tid], False            # already here
+
+        row = dict(id=tid, name=meta_row.get("name", ""),
+                   artists=meta_row.get("artists", ""),
+                   album=meta_row.get("album", ""),
+                   duration_ms=meta_row.get("duration_ms", ""),
+                   preview_url=meta_row.get("preview_url", ""),
+                   source=kind, isrc=meta_row.get("isrc", ""))
+        self.X = np.vstack([self.X, v[None, :]])
+        self.meta = pd.concat([self.meta, pd.DataFrame([row])], ignore_index=True)
+        j = len(self.meta) - 1
+        self.n = len(self.X)
+        self._id_to_row[tid] = j
+        self._artist_norm = self.meta["artists"].astype(str).map(_norm_name)
+        self._name_norm = self.meta["name"].astype(str).map(_norm_name)
+        for cache in ("_axis_pct", "_iso", "_nn_ref", "_libclust"):
+            setattr(self, cache, None)
+        if self.year is not None:
+            self.year = np.append(self.year, np.float32("nan"))
+        if self.genres is not None:
+            self.genres = np.append(self.genres, "")
+        if persist:
+            self._persist_added(row, v, kind)
+        return j, True
+
+    def neighbour_position(self, row, k=5):
+        """2-D and 3-D coordinates for a track that has none, taken from the
+        tracks it sounds most like. Returns {} if no coordinates are loaded."""
+        try:
+            import chat_routes
+            c2, c3 = chat_routes._map_coords(), chat_routes._map_coords_3d()
+        except Exception:
+            return {}
+        if not c2 and not c3:
+            return {}
+        s = self.X @ self.X[row]
+        s[row] = -np.inf
+        near = np.argsort(-s)[:k]
+        out = {}
+        for store, keys in ((c2, ("x", "y")), (c3, ("x3", "y3", "z3"))):
+            vals = [store.get(str(self.meta.id[int(j)])) for j in near]
+            vals = [v for v in vals if v]
+            if vals:
+                m = np.mean(np.array(vals, dtype="float64"), axis=0)
+                out.update(dict(zip(keys, [round(float(x), 3) for x in m])))
+        return out
+
+    def _persist_added(self, row, vector, kind):
+        """Append to the store directory, not the repo's data files.
+
+        Railway's filesystem is ephemeral, so additions have to live on the
+        same volume as the conversation log or they vanish on the next deploy.
+        """
+        import base64, json as _json
+        try:
+            d = os.environ.get("CRATE_STORE_DIR", "crate_store")
+            if not os.path.isdir(d):
+                os.makedirs(d)
+            with open(os.path.join(d, "added_tracks.jsonl"), "a") as f:
+                f.write(_json.dumps(dict(
+                    row, kind=kind,
+                    v=base64.b64encode(vector.tobytes()).decode("ascii"))) + "\n")
+        except Exception as e:
+            print("[crate] could not persist added track: %s" % e)
+
+    def _load_added(self):
+        """Re-attach previously added tracks at start-up."""
+        import base64, json as _json
+        d = os.environ.get("CRATE_STORE_DIR", "crate_store")
+        p = os.path.join(d, "added_tracks.jsonl")
+        if not os.path.exists(p):
+            return 0
+        n = 0
+        with open(p) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = _json.loads(line)
+                    v = np.frombuffer(base64.b64decode(r.pop("v")), dtype="float32")
+                    kind = r.pop("kind", "added")
+                    _, fresh = self.add_track(r, v, kind=kind, persist=False)
+                    n += fresh
+                except Exception:
+                    continue
+        if n:
+            print("[crate] re-attached %d previously added track(s)" % n)
+        return n
 
     def present(self, session, track_ids):
         """Set exactly what the user is shown, in this order. No wildcard.

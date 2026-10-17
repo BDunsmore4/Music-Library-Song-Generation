@@ -135,6 +135,30 @@ classical it is the date of the performance, so never use a year range for a
 repertoire era — use the genre tags, which include "Baroque Era" and
 "Romantic Era".
 
+GROWING THE LIBRARY
+
+Two ways to add something, with very different costs.
+
+`add_track` fetches a real recording from Apple Music, embeds it and keeps it. \
+Use it when they ask for something specific that is not here — check with \
+library_lookup first, then offer. Eight an hour. It returns alternatives if the \
+match looks wrong; show them rather than guessing again.
+
+`generate_track` composes thirty seconds with ElevenLabs. This is a LAST \
+RESORT and it costs real money, so it is capped at once an hour. Exhaust the \
+real options first: search by sound, take a bearing from artists, add the \
+actual record. Reach for it when nothing in the library fits and no real \
+recording would either — a very specific brief, or a genuine gap.
+
+Never generate without saying you are about to and why. If they ask why it is \
+limited, say plainly that each generation costs money, rather than being vague \
+about "limits". `acquisition_budget` tells you what is left and when the next \
+is available, so quote that instead of guessing.
+
+A generated track is not one of theirs. Nobody recorded it and nobody chose \
+it, so never let it sit in a list as though it were part of the collection — \
+say what it is.
+
 HOW UNUSUAL A TRACK IS
 
 Every result carries `isolation`, 0–100, where 100 is the strangest thing in \
@@ -429,6 +453,51 @@ TOOLS = [
         },
     },
     {
+        "name": "add_track",
+        "description": (
+            "Find a track on Apple Music, embed its preview and add it to the "
+            "library permanently. Use when they ask for something specific that "
+            "is not here yet. Capped at eight an hour. Returns alternatives if "
+            "the first match looks wrong, and refuses politely with a time when "
+            "the cap is reached."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string",
+                          "description": "track and artist, e.g. 'Burial Archangel'"},
+                "pick": {"type": "integer", "default": 0,
+                         "description": "index of an alternative from a previous call"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "generate_track",
+        "description": (
+            "LAST RESORT. Compose a new thirty-second track with ElevenLabs when "
+            "nothing in the library fits and no real recording would either — a "
+            "very specific brief, or a gap in the collection. This costs real "
+            "money per call and is capped at once an hour. Try search, artists "
+            "and add_track first. If they ask why it is limited, tell them "
+            "plainly that it is expensive rather than being vague."),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string",
+                                "description": "a sound description, as for search"},
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "acquisition_budget",
+        "description": (
+            "How many additions and generations remain this hour, and when the "
+            "next becomes available. Call before promising either, and when "
+            "asked why something is limited."),
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
         "name": "present",
         "description": (
             "Decide exactly what the user is shown, in your chosen order. Pass "
@@ -618,6 +687,30 @@ class CrateChat(object):
 
             if name == "library_overview":
                 return c.overview()
+
+            if name == "acquisition_budget":
+                import acquire
+                return acquire.budget()
+
+            if name == "add_track":
+                import acquire
+                out = acquire.add_from_catalogue(c, args["query"],
+                                                 int(args.get("pick") or 0))
+                if out.get("track") and (out.get("added") or
+                                         out.get("reason") == "already_present"):
+                    row = c._id_to_row.get(str(out["track"]["track_id"]))
+                    if row is not None:
+                        c.present(s, [out["track"]["track_id"]])
+                        self.last_results = c.last_results
+                return out
+
+            if name == "generate_track":
+                import acquire
+                out = acquire.generate(c, args["description"])
+                if out.get("generated") and out.get("track"):
+                    c.present(s, [out["track"]["track_id"]])
+                    self.last_results = c.last_results
+                return out
 
             if name == "outliers":
                 return c.outliers(limit=int(args.get("limit") or 8),

@@ -109,6 +109,35 @@ def log_feedback(session_id, track_id, rating, source="keep"):
                 rating=float(rating), source=source))
 
 
+def log_acquisition(kind, ref, detail=None):
+    """Record that a track was added or generated.
+
+    Written to the same append-only log as everything else so the rate limit
+    survives a restart and is shared across sessions — an in-process counter
+    would reset on every deploy and be per-user, which is not a limit at all.
+    """
+    append(dict(type="acquisition", kind=kind, ref=str(ref), detail=detail))
+
+
+def count_recent(kind, seconds=3600, path=None):
+    """How many acquisitions of this kind in the last `seconds`."""
+    cutoff = time.time() - seconds
+    return sum(1 for e in load_events(path)
+               if e.get("type") == "acquisition" and e.get("kind") == kind
+               and float(e.get("ts", 0)) >= cutoff)
+
+
+def oldest_recent(kind, seconds=3600, path=None):
+    """Timestamp of the earliest acquisition still inside the window, so the
+    assistant can say when the next one becomes available rather than just
+    refusing."""
+    cutoff = time.time() - seconds
+    ts = [float(e.get("ts", 0)) for e in load_events(path)
+          if e.get("type") == "acquisition" and e.get("kind") == kind
+          and float(e.get("ts", 0)) >= cutoff]
+    return min(ts) if ts else None
+
+
 def log_message(session_id, role, text):
     append(dict(type="message", session=session_id, role=role, text=text))
 
