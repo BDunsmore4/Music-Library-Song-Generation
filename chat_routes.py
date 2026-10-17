@@ -177,9 +177,24 @@ def _public(results):
     uniform = span <= 1e-9
     span = span or 1.0
     out = []
+    crate_model = _chat.crate if _chat else None
     for r, sc in zip(results, scores):
         xy = coords.get(str(r.get("track_id"))) or (None, None)
         xyz = c3.get(str(r.get("track_id")))
+        # A track added since the map files were built is in neither lookup.
+        # It still has a position — the mean of its nearest neighbours — and
+        # throwing it away is what stopped added songs appearing on the map
+        # and blocked navigation to them.
+        if (xy[0] is None or xyz is None) and crate_model is not None \
+                and r.get("row") is not None:
+            try:
+                near = crate_model.neighbour_position(int(r["row"]))
+                if xy[0] is None and "x" in near:
+                    xy = (near["x"], near["y"])
+                if xyz is None and "x3" in near:
+                    xyz = (near["x3"], near["y3"], near["z3"])
+            except Exception:
+                pass
         out.append(dict(track_id=r.get("track_id"), name=r.get("name"),
                         artist=r.get("artist"), album=r.get("album"),
                         preview_url=r.get("preview_url"),

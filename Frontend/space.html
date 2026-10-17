@@ -418,7 +418,16 @@ function updateComet(){
 }
 function navigateTracks(tracks){
   const byId=new Map(POINTS.map(p=>[String(p.id),p]));
-  const mapped=tracks.map(t=>({track:t,point:byId.get(String(t.track_id))})).filter(t=>t.point);
+  const mapped=tracks.map(t=>{
+    let point=byId.get(String(t.track_id));
+    // Tracks added since data_3d.json was built are not in POINTS. The payload
+    // carries a position derived from their nearest neighbours, so place them
+    // from that instead of dropping them — otherwise adding a song silently
+    // disables navigating to it. Coordinates arrive unscaled, as in the file.
+    if(!point && Number.isFinite(t.x3) && Number.isFinite(t.y3) && Number.isFinite(t.z3))
+      point={id:t.track_id,name:t.name,artist:t.artist,x:t.x3*S,y:t.y3*S,z:t.z3*S};
+    return {track:t,point};
+  }).filter(t=>t.point);
   if(!mapped.length)return false;
   highlightTracks(mapped.map(t=>t.point));
   const selected=mapped.find(t=>!t.track.wildcard)||mapped[0];
