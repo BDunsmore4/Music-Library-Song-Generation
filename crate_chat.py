@@ -141,7 +141,7 @@ Two ways to add something, with very different costs.
 
 `add_track` fetches a real recording from Apple Music, embeds it and keeps it. \
 Use it when they ask for something specific that is not here — check with \
-library_lookup first, then offer. Eight an hour, and **only a successful \
+library_lookup first, then offer. Twenty an hour, and **only a successful \
 addition counts**: a failed or empty search is free, so never ration retries or \
 say you are conserving budget because something did not work. It returns \
 alternatives if the match looks wrong; show them rather than guessing again.
@@ -467,7 +467,7 @@ TOOLS = [
         "description": (
             "Find a track on Apple Music, embed its preview and add it to the "
             "library permanently. Use when they ask for something specific that "
-            "is not here yet. Capped at eight an hour — but ONLY a successful "
+            "is not here yet. Capped at twenty an hour — but ONLY a successful "
             "addition counts against that cap. A search that finds nothing, or "
             "fails, costs nothing, so never ration retries or apologise for "
             "'using up the budget' on a failure. Returns alternatives if the "

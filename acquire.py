@@ -6,7 +6,7 @@ different limits.
 
   add_from_catalogue   Apple Music has it. Download the 30-second preview,
                        CLAP-embed it, append to the index. Costs a request.
-                       Eight an hour.
+                       Twenty an hour.
   generate             Nobody has it, because it does not exist. Ask ElevenLabs
                        to compose thirty seconds, embed that, keep it. Costs
                        real money. One an hour, and the assistant is told to
@@ -25,7 +25,7 @@ points from library ones.
 import os
 import time
 
-ADD_PER_HOUR = int(os.environ.get("CRATE_ADD_PER_HOUR", 8))
+ADD_PER_HOUR = int(os.environ.get("CRATE_ADD_PER_HOUR", 20))
 GENERATE_PER_HOUR = int(os.environ.get("CRATE_GENERATE_PER_HOUR", 1))
 WINDOW = 3600
 

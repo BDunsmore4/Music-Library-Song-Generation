@@ -616,7 +616,7 @@ limit at all.
 
 | tool | what it does | cap |
 |---|---|---|
-| `add_track` | finds it on Apple Music, embeds the preview, keeps it | **8 / hour** |
+| `add_track` | finds it on Apple Music, embeds the preview, keeps it | **20 / hour** |
 | `generate_track` | composes 30s with ElevenLabs | **1 / hour** |
 | `acquisition_budget` | what is left and when the next is free | — |
 
