@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Taste Map · Muse IC</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  /* ── Palette ── */
+  --bg:         #111827;
+  --surface:    #161c27;
+  --surface-2:  #1d2436;
+  --border:     #242d3f;
+  --border-2:   #2e3a50;
+  --text:       #dce3f0;
+  --muted:      #7a8699;
+  --faint:      #3a4560;
+
+  /* ── Point colours ── */
+  --blue:       #4f8ef7;
+  --amber:      #c8982e;
+  --sage:       #3da870;
+  --coral:      #d45f5f;
+
+  /* ── UI ── */
+  --accent:     #4f8ef7;
+  --radius:     6px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+header {
+  height: 52px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.logo {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.logo span { color: var(--accent); }
+
+#search {
+  flex: 1;
+  max-width: 320px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#search:focus { border-color: var(--accent); }
+#search::placeholder { color: var(--faint); }
+
+#stats {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Filter bar ──────────────────────────────────────────────────────────── */
+#filterbar {
+  height: 40px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.filter-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s, background 0.15s;
+}
+.pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.pill.off { opacity: 0.3; }
+
+/* ── Main layout ─────────────────────────────────────────────────────────── */
+#main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── Map area ────────────────────────────────────────────────────────────── */
+#map-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+#legend {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: none;
+}
+.l-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.l-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+
+#map-hint {
+  position: absolute;
+  bottom: 16px;
+  right: 64px;
+  font-size: 10px;
+  color: var(--faint);
+  text-align: right;
+  line-height: 1.8;
+  pointer-events: none;
+}
+
+#zoom-btns {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 10;
+}
+#zoom-btns button {
+  width: 30px; height: 30px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+#zoom-btns button:hover {
+  background: var(--surface-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Side panel ──────────────────────────────────────────────────────────── */
+#side-panel {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-section {
+  padding: 18px 18px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+/* Generated track player */
+#gen-player {
+  display: none;
+  margin-bottom: 14px;
+}
+#gen-label {
+  font-size: 11px;
+  color: var(--coral);
+  line-height: 1.5;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+#gen-src {
+  width: 100%;
+  height: 32px;
+  border-radius: var(--radius);
+  accent-color: var(--coral);
+}
+
+/* Offline message */
+#offline-section p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+#offline-section .contact {
+  color: var(--accent);
+  font-weight: 500;
+}
+#offline-section .hint {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(212,95,95,0.1);
+  border: 1px solid rgba(212,95,95,0.25);
+  border-radius: var(--radius);
+  font-size: 11px;
+  color: var(--coral);
+}
+
+/* Live generation */
+#el-prompt {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  color: var(--text);
+  outline: none;
+  resize: none;
+  height: 80px;
+  line-height: 1.5;
+  transition: border-color 0.15s;
+  margin-bottom: 10px;
+}
+#el-prompt:focus { border-color: var(--accent); }
+#el-prompt::placeholder { color: var(--faint); }
+
+#el-generate {
+  width: 100%;
+  padding: 9px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: opacity 0.15s, transform 0.1s;
+}
+#el-generate:hover { opacity: 0.9; transform: translateY(-1px); }
+#el-generate:active { transform: translateY(0); }
+#el-generate:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+#el-status {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  min-height: 14px;
+  line-height: 1.4;
+}
+
+.panel-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 18px 0 8px;
+}
+#st-query {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 9px 11px;
+  background: var(--bg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  color: var(--text);
+  outline: none;
+  margin-bottom: 8px;
+  transition: border-color 0.15s;
+}
+#st-query:focus { border-color: var(--accent); }
+#st-query::placeholder { color: var(--faint); }
+#st-search {
+  width: 100%;
+  padding: 9px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: opacity 0.15s;
+}
+#st-search:hover { opacity: 0.85; }
+#st-search:disabled { opacity: 0.4; cursor: not-allowed; }
+#st-status {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+  min-height: 14px;
+  line-height: 1.4;
+}
+#st-results { max-height: 300px; overflow-y: auto; }
+.st-result {
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.st-result .st-meta { color: var(--text); margin-bottom: 6px; line-height: 1.35; }
+.st-result .st-artist { color: var(--muted); }
+.st-result audio { width: 100%; height: 30px; margin-bottom: 6px; }
+.st-plot {
+  width: 100%;
+  padding: 6px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.st-plot:hover { opacity: 0.9; }
+.st-plot:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#el-audio {
+  display: none;
+  width: 100%;
+  margin-top: 10px;
+  height: 32px;
+  accent-color: var(--accent);
+}
+
+#el-download {
+  display: none;
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+#el-download:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* About section */
+#about-section {
+  padding: 16px 18px;
+  flex: 1;
+  overflow-y: auto;
+}
+#about-section p {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin-bottom: 10px;
+}
+#about-section .about-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 8px;
+}
+
+/* Tooltip */
+#tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  padding: 10px 13px;
+  font-size: 12px;
+  line-height: 1.6;
+  display: none;
+  max-width: 260px;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.tt-name  { font-weight: 600; margin-bottom: 1px; }
+.tt-sub   { color: var(--muted); font-size: 11px; }
+.tt-type  { font-size: 10px; color: var(--faint); margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border); }
+/* ── Guided tour ── */
+#tour { position:fixed; inset:0; z-index:2000; display:none; }
+#tour.tour-centered { background:rgba(8,11,17,0.80); }
+#tour-spot {
+  position:absolute; border-radius:12px; pointer-events:none; opacity:0;
+  box-shadow: 0 0 0 9999px rgba(8,11,17,0.80), 0 0 0 2px var(--accent), 0 0 22px rgba(79,142,247,0.5);
+  transition: top .45s cubic-bezier(.4,0,.2,1), left .45s cubic-bezier(.4,0,.2,1),
+              width .45s cubic-bezier(.4,0,.2,1), height .45s cubic-bezier(.4,0,.2,1), opacity .35s;
+}
+#tour-card {
+  position:absolute; width:300px; max-width:calc(100vw - 32px); box-sizing:border-box;
+  background:#10151c; border:1px solid var(--border-2); border-radius:14px; padding:18px 18px 14px;
+  color:var(--text); box-shadow:0 18px 50px rgba(0,0,0,.55);
+  transition: top .45s cubic-bezier(.4,0,.2,1), left .45s cubic-bezier(.4,0,.2,1), opacity .35s;
+}
+#tour-step  { font-size:10px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+#tour-title { font-size:16px; font-weight:700; margin-bottom:8px; }
+#tour-body  { font-size:13px; line-height:1.55; color:var(--muted); margin-bottom:16px; }
+#tour-body em { color:var(--text); font-style:normal; }
+#tour-controls { display:flex; align-items:center; gap:8px; }
+#tour-controls button {
+  font-family:inherit; font-size:12px; font-weight:600; border-radius:8px; padding:7px 14px; cursor:pointer;
+  border:1px solid var(--border-2); background:transparent; color:var(--muted); transition:opacity .15s;
+}
+#tour-skip { padding-left:0; border:none; }
+#tour-next { background:var(--accent); border-color:var(--accent); color:#fff; }
+#tour-controls button:hover { opacity:.85; }
+#tour-launch {
+  flex-shrink:0;
+  font-family:inherit; font-size:12px; font-weight:600; cursor:pointer;
+  background:transparent; color:var(--accent); border:1px solid var(--accent);
+  border-radius:999px; padding:6px 14px; white-space:nowrap; transition:opacity .15s;
+}
+#tour-launch:hover { opacity:.85; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="logo">Taste <span>Map</span></div>
+  <input type="text" id="search" placeholder="Search tracks, artists…">
+  <button id="tour-launch" type="button">Show me around</button>
+  <a id="cratechat" href="./" style="text-decoration:none;font-size:12px;font-weight:600;color:#dce3f0;background:#1d2436;border:1px solid #2e3a50;padding:5px 11px;border-radius:6px;white-space:nowrap;">Muse IC chat</a>
+  <a id="explore3d" href="./space.html" style="text-decoration:none;font-size:12px;font-weight:600;color:#fff;background:var(--accent,#4f8ef7);padding:6px 12px;border-radius:6px;white-space:nowrap;">✦ Explore in immersive 3D</a>
+  <span id="stats">—</span>
+</header>
+
+<!-- ── Filter bar ── -->
+<div id="filterbar">
+  <span class="filter-label">Show</span>
+</div>
+
+<!-- ── Main ── -->
+<div id="main">
+
+  <!-- Map -->
+  <div id="map-wrap">
+    <canvas id="c2d"></canvas>
+    <div id="legend"></div>
+    <div id="map-hint">drag — pan<br>hover — inspect</div>
+    <div id="zoom-btns">
+      <button onclick="zoomBy(1.3)" title="Zoom in">+</button>
+      <button onclick="zoomBy(0.77)" title="Zoom out">−</button>
+    </div>
+  </div>
+
+  <!-- Side panel -->
+  <div id="side-panel">
+
+    <!-- Generator section -->
+    <div class="panel-section" id="gen-panel">
+      <div class="panel-title">⟡ ElevenLabs Generate</div>
+
+      <!-- Plays when red dot clicked -->
+      <div id="gen-player">
+        <div id="gen-label"></div>
+        <audio id="gen-src" controls></audio>
+      </div>
+
+      <!-- Waking (serverless cold start) -->
+      <div id="waking-section" style="display:none">
+        <p>⏳ Waking up the live server…<br>
+          <span class="hint">first load can take ~30–60s — generation + search will appear shortly</span>
+        </p>
+      </div>
+
+      <!-- Offline -->
+      <div id="offline-section" style="display:none">
+        <p>
+          Live generation is currently offline.<br>
+          <span class="hint">● Click any point to hear that track</span>
+        </p>
+        <p style="margin-top:10px">
+          <span class="contact">Contact bendunsmore@icloud.com</span> for a demo.
+        </p>
+        <p style="margin-top:8px">
+          <a href="https://youtu.be/1azJ-mVKlAk"  
+          target="_blank"
+          style="color:var(--accent);font-size:11px;text-decoration:none;">
+          ▶ Watch demo on YouTube →
+          </a>
+        </p>
+      </div>
+
+      <!-- Live -->
+      <div id="live-section" style="display:none">
+        <textarea id="el-prompt" placeholder="Describe the music you want to generate…"></textarea>
+        <button id="el-generate" onclick="generate()">Generate + Plot on Map</button>
+        <div id="el-status"></div>
+        <audio id="el-audio" controls></audio>
+        <a id="el-download" download="elevenlabs_generated.mp3">↓ Download audio</a>
+
+        <div class="panel-subtitle">⟡ Embed a new track on the map</div>
+        <input id="st-query" type="text" placeholder="Search a song on Apple Music…"
+               onkeydown="if(event.key==='Enter')searchTrack()"
+               oninput="if(!this.value.trim()){document.getElementById('st-results').innerHTML='';document.getElementById('st-status').textContent='';}">
+        <button id="st-search" onclick="searchTrack()">Search</button>
+        <div id="st-status"></div>
+        <div id="st-results"></div>
+      </div>
+    </div>
+
+    <!-- About section -->
+    <div id="about-section">
+      <div class="about-title">About this map</div>
+      <p>
+        7,000+ tracks from my Spotify library, embedded using LAION-AI/CLAP, a deep learning model that combines natural language and audio. Then reduced to 2D with UMAP.
+      </p>
+      <p>
+        Red dots are tracks generated by ElevenLabs Music; purple dots are tracks searched from
+        Apple Music — each plotted by its acoustic embedding.
+      </p>
+      <p>
+        Built to explore my music library, and how AI-generated music fits amongst it. 
+      </p>
+      <p> 
+        Future directions include algorithms to generate prompts that create novel additions to the music library.
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- Guided tour -->
+<div id="tour">
+  <div id="tour-spot"></div>
+  <div id="tour-card">
+    <div id="tour-step"></div>
+    <div id="tour-title"></div>
+    <div id="tour-body"></div>
+    <div id="tour-controls">
+      <button id="tour-skip" type="button">Skip</button>
+      <span style="flex:1"></span>
+      <button id="tour-back" type="button">Back</button>
+      <button id="tour-next" type="button">Next</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Data ──────────────────────────────────────────────────────────────────────
+// DATA is loaded at runtime from data.json + the R2 manifest (see boot()).
+
+// ── Point type config ─────────────────────────────────────────────────────────
+const TYPE_COLOR = {
+  audio:         '#4f8ef7',
+  genre:         '#fdcc0d',
+  environmental: '#9be198',
+  generated:     '#d45f5f',
+  searched:      '#9333ea',
+};
+const TYPE_LABEL = {
+  audio:         'Music Library',
+  genre:         'Genre Anchors',
+  environmental: 'Environmental',
+  generated:     'ElevenLabs Generated',
+  searched:      'Apple Music Search',
+};
+
+function ptColor(p) { return TYPE_COLOR[p.point_type] || '#7a8699'; }
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let allPts = [], visPts = [], genPts = [], srchPts = [];
+let activeTypes = new Set(['audio','generated','searched']);
+let query = '', dragMoved = false;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+function init(json) {
+  // genre + environmental anchors removed — misleading (text→audio modality gap)
+  allPts = (json.points || []).filter(p => p.point_type === 'audio');
+  genPts = (json.generated || []).map(p => ({...p, audio: p.audio || p.audio_url, point_type:'generated'}));
+  buildFilters();
+  buildLegend();
+  apply();
+  updateStats();
+}
+
+function buildFilters() {
+  const bar   = document.getElementById('filterbar');
+  const label = bar.querySelector('.filter-label');
+  bar.innerHTML = ''; bar.appendChild(label);
+  ['audio','generated','searched'].forEach(type => {
+    const pill = document.createElement('div');
+    pill.className = 'pill';
+    const col = TYPE_COLOR[type];
+    pill.style.borderColor = col + '55';
+    pill.style.color = col;
+    pill.style.background = col + '12';
+    pill.innerHTML = `<span class="dot" style="background:${col}"></span>${TYPE_LABEL[type]}`;
+    pill.onclick = () => {
+      activeTypes.has(type) ? activeTypes.delete(type) : activeTypes.add(type);
+      pill.classList.toggle('off', !activeTypes.has(type));
+      render2D(); updateStats();
+    };
+    bar.appendChild(pill);
+  });
+}
+
+function buildLegend() {
+  document.getElementById('legend').innerHTML =
+    ['audio','generated','searched'].map(t => `
+      <div class="l-item">
+        <div class="l-dot" style="background:${TYPE_COLOR[t]}"></div>
+        ${TYPE_LABEL[t]}
+      </div>`
+    ).join('');
+}
+
+function matchesQuery(p, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  return (p.name||'').toLowerCase().includes(q)
+      || (p.artists||'').toLowerCase().includes(q)
+      || (p.label||'').toLowerCase().includes(q);
+}
+
+function apply() {
+  visPts = query ? allPts.filter(p => matchesQuery(p, query)) : [...allPts];
+  render2D();
+}
+
+function updateStats() {
+  document.getElementById('stats').textContent =
+    `${allPts.length.toLocaleString()} tracks · ${genPts.length} generated · ${srchPts.length} searched`;
+}
+
+document.getElementById('search').addEventListener('input', e => {
+  query = e.target.value.trim(); apply();
+});
+
+// ── Server detection ──────────────────────────────────────────────────────────
+// CLAP embedding server. Point this at the Railway deployment (was http://localhost:8765).
+const CLAP_SERVER = 'https://music-library-song-generation-production.up.railway.app';
+const DATA_URL = './data.json';
+const R2_PUBLIC_BASE = 'https://pub-b3e7f539051b40f693e949e81b31dd44.r2.dev';   // ← set to your R2 public base URL (no trailing slash)
+const MANIFEST_URL = R2_PUBLIC_BASE + '/generated.json';
+const SEARCHED_URL = R2_PUBLIC_BASE + '/searched.json';
+
+function setServerState(state) {  // 'live' | 'waking' | 'offline'
+  document.getElementById('live-section').style.display    = state==='live'    ? 'block' : 'none';
+  document.getElementById('waking-section').style.display  = state==='waking'  ? 'block' : 'none';
+  document.getElementById('offline-section').style.display = state==='offline' ? 'block' : 'none';
+}
+
+async function pingHealth(timeoutMs) {
+  try {
+    const r = await fetch(CLAP_SERVER + '/health', { signal: AbortSignal.timeout(timeoutMs) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+
+async function checkServer() {
+  // Fast path: already warm?
+  if (await pingHealth(3000)) { setServerState('live'); return; }
+  // Cold serverless start — the ping above also wakes it. Be patient (~90s).
+  setServerState('waking');
+  for (let i = 0; i < 12; i++) {
+    if (await pingHealth(8000)) { setServerState('live'); return; }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  setServerState('offline');
+}
+
+// ── ElevenLabs generation ─────────────────────────────────────────────────────
+async function generate() {
+  const prompt = document.getElementById('el-prompt').value.trim();
+  const btn    = document.getElementById('el-generate');
+  const status = document.getElementById('el-status');
+  const audio  = document.getElementById('el-audio');
+  if (!prompt) { status.textContent = 'Enter a prompt'; return; }
+  btn.disabled = true; status.textContent = 'Generating… (this can take ~1 min)'; audio.style.display = 'none';
+  try {
+    const resp = await fetch(CLAP_SERVER + '/generate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt})
+    });
+    if (!resp.ok) {
+      let msg = `Generation error ${resp.status}`;
+      try { const err = await resp.json(); msg = err.error || msg; } catch(e) {}
+      throw new Error(msg);
+    }
+    const point = await resp.json();
+    audio.src = point.audio_url; audio.style.display = 'block';
+    const dl = document.getElementById('el-download');
+    dl.href = point.audio_url; dl.style.display = 'block';
+    const pt = {x:point.x, y:point.y, label:point.label||prompt, audio:point.audio_url, point_type:'generated'};
+    genPts.push(pt);
+    updateStats(); flyToAndPulse(pt);
+    status.textContent = `Plotted at (${point.x.toFixed(2)}, ${point.y.toFixed(2)})`;
+  } catch(e) {
+    status.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Apple Music track search → embed ────────────────────────────────────────────
+async function searchTrack() {
+  const q      = document.getElementById('st-query').value.trim();
+  const btn    = document.getElementById('st-search');
+  const status = document.getElementById('st-status');
+  const out    = document.getElementById('st-results');
+  if (!q) { status.textContent = 'Enter a song name'; return; }
+  btn.disabled = true; status.textContent = 'Searching…'; out.innerHTML = '';
+  try {
+    const resp = await fetch(CLAP_SERVER + '/search_track', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: q})
+    });
+    if (!resp.ok) throw new Error(`Search error ${resp.status}`);
+    const results = (await resp.json()).results || [];
+    if (!results.length) { status.textContent = 'No matches with a preview'; return; }
+    status.textContent = 'Pick the right version, then plot it:';
+    results.slice(0, 10).forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'st-result';
+      const meta = document.createElement('div');
+      meta.className = 'st-meta';
+      meta.innerHTML = `${t.name} <span class="st-artist">— ${t.artist}${t.album ? ' · ' + t.album : ''}</span>`;
+      const audio = document.createElement('audio');
+      audio.controls = true; audio.preload = 'none'; audio.src = t.preview_url;
+      const plot = document.createElement('button');
+      plot.className = 'st-plot'; plot.textContent = 'Plot on map';
+      plot.onclick = () => plotTrack(t, plot);
+      div.appendChild(meta); div.appendChild(audio); div.appendChild(plot);
+      out.appendChild(div);
+    });
+  } catch(e) {
+    status.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function plotTrack(t, btn) {
+  const status = document.getElementById('st-status');
+  btn.disabled = true; btn.textContent = 'Embedding…';
+  try {
+    const label = `${t.name} — ${t.artist}`;
+    const resp = await fetch(CLAP_SERVER + '/embed_track', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: t.preview_url, label, name: t.name, artist: t.artist})
+    });
+    if (!resp.ok) {
+      let msg = `Embed error ${resp.status}`;
+      try { msg = (await resp.json()).error || msg; } catch(e) {}
+      throw new Error(msg);
+    }
+    const point = await resp.json();
+    const pt = {x:point.x, y:point.y, label, name:t.name, artists:t.artist,
+                audio:t.preview_url, point_type:'searched'};
+    srchPts.push(pt);
+    activeTypes.add('searched');
+    updateStats(); flyToAndPulse(pt);
+    document.getElementById('st-results').innerHTML = '';
+    status.textContent = `Added “${t.name}” to the map.`;
+  } catch(e) {
+    status.textContent = `Error: ${e.message}`;
+    btn.disabled = false; btn.textContent = 'Plot on map';
+  }
+}
+
+// ── 2D Canvas ─────────────────────────────────────────────────────────────────
+const c2d = document.getElementById('c2d');
+const ctx  = c2d.getContext('2d');
+let pan={x:0,y:0}, zoom2=1, drag2=false, lm2={x:0,y:0};
+let bx={min:0,max:1}, by={min:0,max:1};
+let focusPt=null, focusStart=0; const FOCUS_MS=2800;
+
+function sizeCanvas() {
+  const w = document.getElementById('map-wrap');
+  c2d.width = w.clientWidth; c2d.height = w.clientHeight; render2D();
+}
+
+function normBounds() {
+  const all = [...allPts, ...genPts, ...srchPts];
+  if (!all.length) return;
+  bx.min = Math.min(...all.map(p=>parseFloat(p.x))); bx.max = Math.max(...all.map(p=>parseFloat(p.x)));
+  by.min = Math.min(...all.map(p=>parseFloat(p.y))); by.max = Math.max(...all.map(p=>parseFloat(p.y)));
+}
+
+function toScr(px, py) {
+  const W=c2d.width, H=c2d.height, m=50;
+  const fx = ((parseFloat(px)-bx.min)/(bx.max-bx.min||1))*(W-m*2)+m;
+  const fy = ((parseFloat(py)-by.min)/(by.max-by.min||1))*(H-m*2)+m;
+  return {x:(fx-W/2)*zoom2+W/2+pan.x, y:(fy-H/2)*zoom2+H/2+pan.y};
+}
+
+const ZMIN = 0.35, ZMAX = 60;
+// Zoom by factor f, keeping the world point under (mx,my) fixed on screen.
+function zoomAt(mx, my, f) {
+  const newZoom = Math.min(ZMAX, Math.max(ZMIN, zoom2 * f));
+  f = newZoom / zoom2;                 // re-derive after clamping
+  const A = mx - c2d.width/2, B = my - c2d.height/2;
+  pan.x = A*(1-f) + pan.x*f;
+  pan.y = B*(1-f) + pan.y*f;
+  zoom2 = newZoom;
+  render2D();
+}
+// +/− buttons zoom about the canvas centre.
+function zoomBy(f) { zoomAt(c2d.width/2, c2d.height/2, f); }
+
+// Smoothly centre a freshly-plotted point, then pulse it so it's easy to spot.
+function flyToAndPulse(p) {
+  normBounds();
+  const W=c2d.width, H=c2d.height, m=50;
+  const fx = ((parseFloat(p.x)-bx.min)/(bx.max-bx.min||1))*(W-m*2)+m;
+  const fy = ((parseFloat(p.y)-by.min)/(by.max-by.min||1))*(H-m*2)+m;
+  const targetZoom = Math.max(zoom2, 2.4);
+  const tPanX = -(fx - W/2)*targetZoom, tPanY = -(fy - H/2)*targetZoom;
+  const sPanX=pan.x, sPanY=pan.y, sZoom=zoom2, t0=performance.now(), FLY=700;
+  focusPt = p; focusStart = t0;
+  function frame(now) {
+    const tf = Math.min(1, (now-t0)/FLY);
+    const e = tf<0.5 ? 2*tf*tf : 1-Math.pow(-2*tf+2,2)/2;  // easeInOutQuad
+    zoom2 = sZoom + (targetZoom-sZoom)*e;
+    pan.x = sPanX + (tPanX-sPanX)*e;
+    pan.y = sPanY + (tPanY-sPanY)*e;
+    render2D();
+    if (now - focusStart < FOCUS_MS) requestAnimationFrame(frame);
+    else { focusPt=null; render2D(); }
+  }
+  requestAnimationFrame(frame);
+}
+
+function render2D() {
+  normBounds();
+  const W=c2d.width, H=c2d.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // Subtle grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)'; ctx.lineWidth = 1;
+  for (let i=0; i<=10; i++) {
+    ctx.beginPath(); ctx.moveTo(W/10*i,0); ctx.lineTo(W/10*i,H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,H/10*i); ctx.lineTo(W,H/10*i); ctx.stroke();
+  }
+
+  const baseR    = Math.max(1.5, Math.min(5, zoom2*2.5));
+  const searching = query.length > 0;
+
+  // Draw each layer in order (back to front)
+  ['audio'].forEach(type => {
+    if (!activeTypes.has(type)) return;
+    visPts.filter(p=>p.point_type===type).forEach(p => {
+      const {x,y} = toScr(p.x, p.y);
+      if (x<-10||x>W+10||y<-10||y>H+10) return;
+      const c = ptColor(p);
+      const r = type==='audio' ? baseR : (type==='genre' ? Math.max(1.5, baseR*0.6) : Math.max(1.2, baseR*0.5));
+      const hit = searching && matchesQuery(p, query);
+      ctx.save();
+      if (searching && !hit) {
+        ctx.globalAlpha = 0.04;
+      } else {
+        ctx.globalAlpha = type==='audio' ? 0.7 : 0.45;
+        if (hit) { ctx.shadowColor=c; ctx.shadowBlur=12; ctx.globalAlpha=1; }
+      }
+      ctx.fillStyle = c;
+      ctx.beginPath(); ctx.arc(x, y, hit ? r*2.2 : r, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  });
+
+  // Generated points — slightly larger, soft glow
+  if (activeTypes.has('generated')) {
+    genPts.forEach(p => {
+      if (searching && !matchesQuery(p, query)) return;
+      const {x,y} = toScr(p.x, p.y);
+      if (x<-10||x>W+10||y<-10||y>H+10) return;
+      ctx.save();
+      ctx.shadowColor = '#d45f5f'; ctx.shadowBlur = 14;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#d45f5f';
+      ctx.beginPath(); ctx.arc(x, y, baseR*2.2, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  // Searched (Apple Music) points — distinct colour, soft glow
+  if (activeTypes.has('searched')) {
+    srchPts.forEach(p => {
+      if (searching && !matchesQuery(p, query)) return;
+      const {x,y} = toScr(p.x, p.y);
+      if (x<-10||x>W+10||y<-10||y>H+10) return;
+      ctx.save();
+      ctx.shadowColor = '#9333ea'; ctx.shadowBlur = 14;
+      ctx.globalAlpha = 0.9; ctx.fillStyle = '#9333ea';
+      ctx.beginPath(); ctx.arc(x, y, baseR*2.2, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  // Focus pulse on a freshly-plotted point — expanding rings + label
+  if (focusPt) {
+    const elapsed = performance.now() - focusStart;
+    if (elapsed >= FOCUS_MS) { focusPt = null; }
+    else {
+      const {x,y} = toScr(focusPt.x, focusPt.y);
+      const col = TYPE_COLOR[focusPt.point_type] || '#fff';
+      const cyc = 1300;
+      ctx.save();
+      [0, cyc/2].forEach(off => {
+        const ph = ((elapsed+off) % cyc)/cyc;
+        ctx.globalAlpha = (1-ph)*0.8; ctx.strokeStyle = col; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(x, y, 8 + ph*44, 0, Math.PI*2); ctx.stroke();
+      });
+      ctx.globalAlpha = 1; ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 18;
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI*2); ctx.fill();
+      const lbl = focusPt.label || (focusPt.name ? focusPt.name + (focusPt.artists ? ' — '+focusPt.artists : '') : '');
+      if (lbl) {
+        ctx.shadowBlur = 0; ctx.font = '600 12px Inter, system-ui, sans-serif';
+        const tw = ctx.measureText(lbl).width, px = x - tw/2 - 8, py = y - 38;
+        ctx.globalAlpha = 0.9;  ctx.fillStyle = '#0d1117'; ctx.fillRect(px, py, tw+16, 22);
+        ctx.globalAlpha = 1;    ctx.fillStyle = col;       ctx.fillRect(px, py, 3, 22);
+        ctx.fillStyle = '#e6edf3'; ctx.textBaseline = 'middle';
+        ctx.fillText(lbl, x - tw/2, py + 11);
+      }
+      ctx.restore();
+    }
+  }
+}
+
+// ── Interactions ──────────────────────────────────────────────────────────────
+c2d.addEventListener('mousedown', e => {
+  drag2=true; dragMoved=false; lm2={x:e.clientX,y:e.clientY};
+});
+window.addEventListener('mouseup', () => drag2=false);
+c2d.addEventListener('mouseleave', () => hideTooltip());
+c2d.addEventListener('mousemove', e => {
+  if (drag2) {
+    const dx=e.clientX-lm2.x, dy=e.clientY-lm2.y;
+    if (Math.abs(dx)>3||Math.abs(dy)>3) dragMoved=true;
+    pan.x+=dx; pan.y+=dy; lm2={x:e.clientX,y:e.clientY}; render2D();
+  } else hover2D(e);
+});
+// Scroll / trackpad zoom, centred on the cursor.
+c2d.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = c2d.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let dy = e.deltaY;
+  if (e.deltaMode === 1) dy *= 16;            // lines → ~pixels
+  else if (e.deltaMode === 2) dy *= c2d.height; // pages
+  dy = Math.max(-120, Math.min(120, dy));     // stabilise big jumps
+  zoomAt(mx, my, Math.pow(1.0030, -dy));      // smooth ~26%/notch
+}, { passive: false });
+
+c2d.addEventListener('click', e => {
+  if (dragMoved) return;
+  const r=c2d.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  // Search every visible point — library tracks (preview_url) and generated tracks (audio).
+  const candidates = [
+    ...visPts.filter(p=>activeTypes.has(p.point_type)),
+    ...(activeTypes.has('generated') ? genPts : []),
+    ...(activeTypes.has('searched') ? srchPts : []),
+  ];
+  let nearest=null, minD=24;
+  candidates.forEach(p => {
+    const s=toScr(p.x,p.y);
+    const d=Math.hypot(s.x-mx,s.y-my);
+    if (d<minD) { minD=d; nearest=p; }
+  });
+  const audioUrl = nearest && (nearest.audio || nearest.preview_url);
+  if (audioUrl) {
+    const label = nearest.label
+      || (nearest.name ? nearest.name + (nearest.artists ? ' — ' + nearest.artists : '') : 'Track');
+    const player = document.getElementById('gen-player');
+    const src    = document.getElementById('gen-src');
+    document.getElementById('gen-label').textContent = label;
+    src.src = audioUrl; player.style.display='block';
+    src.load(); src.play();
+  }
+});
+
+function hover2D(e) {
+  const r=c2d.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  let nearest=null, minD=16;
+  visPts.filter(p=>activeTypes.has(p.point_type)).forEach(p => {
+    const s=toScr(p.x,p.y);
+    const d=Math.hypot(s.x-mx,s.y-my);
+    if (d<minD) { minD=d; nearest=p; }
+  });
+  if (activeTypes.has('generated')) {
+    genPts.forEach(p => {
+      const s=toScr(p.x,p.y);
+      const d=Math.hypot(s.x-mx,s.y-my);
+      if (d<minD) { minD=d; nearest=p; }
+    });
+  }
+  if (activeTypes.has('searched')) {
+    srchPts.forEach(p => {
+      const s=toScr(p.x,p.y);
+      const d=Math.hypot(s.x-mx,s.y-my);
+      if (d<minD) { minD=d; nearest=p; }
+    });
+  }
+  nearest ? showTooltip(e.clientX,e.clientY,nearest) : hideTooltip();
+  c2d.style.cursor = (nearest && (nearest.audio || nearest.preview_url)) ? 'pointer' : 'grab';
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+const tt = document.getElementById('tooltip');
+function showTooltip(mx,my,p) {
+  const c    = TYPE_COLOR[p.point_type] || '#4f8ef7';
+  const name = p.point_type==='generated'
+    ? (p.label||'Generated')
+    : (p.name || p.label || 'Unknown');
+  tt.style.borderColor = c + '66';
+  tt.innerHTML = `
+    <div class="tt-name" style="color:${c}">${name}</div>
+    ${p.artists ? `<div class="tt-sub">${p.artists}</div>` : ''}
+    ${p.album   ? `<div class="tt-sub">${p.album}</div>`   : ''}
+    <div class="tt-type">
+      ${TYPE_LABEL[p.point_type]||p.point_type}
+      ${(p.point_type==='generated'||p.point_type==='searched') ? ' · click to play' : ''}
+    </div>`;
+  tt.style.display = 'block';
+  let tx=mx+14, ty=my+14;
+  if (tx+270>window.innerWidth)  tx=mx-270;
+  if (ty+110>window.innerHeight) ty=my-110;
+  tt.style.left=tx+'px'; tt.style.top=ty+'px';
+}
+function hideTooltip() { tt.style.display='none'; }
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', sizeCanvas);
+sizeCanvas();
+async function boot() {
+  let base = { points: [] }, gen = [];
+  try { base = await (await fetch(DATA_URL)).json(); }
+  catch(e) { console.error('Failed to load data.json', e); }
+  try { gen = await (await fetch(MANIFEST_URL, {cache:'no-store'})).json(); }
+  catch(e) { gen = []; }
+  init({ points: base.points, generated: gen });
+  try {
+    const srch = await (await fetch(SEARCHED_URL, {cache:'no-store'})).json();
+    srchPts = (srch || []).map(p => ({...p, audio: p.audio_url || p.audio, artists: p.artists || p.artist, point_type:'searched'}));
+  } catch(e) { srchPts = []; }
+  render2D(); updateStats();
+  checkServer();
+}
+// ── Guided tour ─────────────────────────────────────────────────────────────
+const TOUR = [
+  { title:"Welcome 👋", body:"This is a living map of my music taste — every dot is a track, placed by how it <em>sounds</em>. Here's the 30-second tour.", target:null },
+  { title:"Hear the map", body:"Click any dot to play it. Scroll to zoom into a neighbourhood, drag to pan.", target:"#map-wrap" },
+  { title:"Find a track", body:"Search the library by song or artist up here.", target:"#search" },
+  { title:"Generate music", body:"Type a prompt and ElevenLabs creates a track — then watch where it lands on the map.", target:"#el-prompt", fallback:"#gen-panel" },
+  { title:"Add what you love", body:"Search Apple Music and plot tracks you like. New songs always welcome 💜", target:"#st-query", fallback:"#gen-panel" },
+  { title:"Dive in 🎶", body:"That's it — explore your way around.", target:null },
+];
+let tourIdx = 0;
+
+function tourRect(step) {
+  for (const sel of [step.target, step.fallback]) {
+    if (!sel) continue;
+    const el = document.querySelector(sel);
+    if (el && el.offsetParent !== null) {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.height) return r;
+    }
+  }
+  return null;
+}
+
+function showTourStep(i) {
+  tourIdx = Math.max(0, Math.min(TOUR.length-1, i));
+  const step = TOUR[tourIdx];
+  const tour = document.getElementById('tour');
+  const spot = document.getElementById('tour-spot');
+  const card = document.getElementById('tour-card');
+  document.getElementById('tour-title').innerHTML = step.title;
+  document.getElementById('tour-body').innerHTML  = step.body;
+  document.getElementById('tour-step').textContent = `${tourIdx+1} / ${TOUR.length}`;
+  document.getElementById('tour-back').style.visibility = tourIdx===0 ? 'hidden' : 'visible';
+  document.getElementById('tour-next').textContent = tourIdx===TOUR.length-1 ? 'Done' : 'Next';
+
+  const rect = tourRect(step), vw = window.innerWidth, vh = window.innerHeight;
+  const cw = 300, ch = 190, gap = 16;
+  if (rect) {
+    const pad = 8;
+    spot.style.opacity = '1';
+    spot.style.top = (rect.top-pad)+'px'; spot.style.left = (rect.left-pad)+'px';
+    spot.style.width = (rect.width+pad*2)+'px'; spot.style.height = (rect.height+pad*2)+'px';
+    tour.classList.remove('tour-centered');
+    let left, top;
+    if (rect.left > vw*0.55) { left = rect.left - cw - gap; top = rect.top; }      // right-side target
+    else if (rect.top < vh*0.4) { top = rect.bottom + gap; left = rect.left; }       // top target → below
+    else { top = rect.top - ch - gap; left = rect.left; }                            // else above
+    card.style.left = Math.max(16, Math.min(left, vw-cw-16)) + 'px';
+    card.style.top  = Math.max(16, Math.min(top,  vh-ch-16)) + 'px';
+    card.style.transform = 'none';
+  } else {
+    spot.style.opacity = '0';
+    tour.classList.add('tour-centered');
+    card.style.left = '50%'; card.style.top = '50%'; card.style.transform = 'translate(-50%,-50%)';
+  }
+}
+
+function startTour() {
+  document.getElementById('tour').style.display = 'block';
+  requestAnimationFrame(() => showTourStep(0));
+}
+function endTour() {
+  document.getElementById('tour').style.display = 'none';
+  try { localStorage.setItem('tasteMapTourSeen','1'); } catch(e){}
+}
+function maybeAutoTour() {
+  let seen = false;
+  try { seen = localStorage.getItem('tasteMapTourSeen'); } catch(e){}
+  if (!seen) startTour();
+}
+
+document.getElementById('tour-next').onclick   = () => { tourIdx===TOUR.length-1 ? endTour() : showTourStep(tourIdx+1); };
+document.getElementById('tour-back').onclick   = () => showTourStep(tourIdx-1);
+document.getElementById('tour-skip').onclick   = endTour;
+document.getElementById('tour-launch').onclick = startTour;
+window.addEventListener('resize', () => {
+  if (document.getElementById('tour').style.display === 'block') showTourStep(tourIdx);
+});
+
+boot();
+maybeAutoTour();
+</script>
+</body>
+</html>

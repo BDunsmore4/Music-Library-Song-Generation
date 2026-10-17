@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Taste Space — 3D</title>
+<title>Musiverse</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
@@ -86,14 +86,14 @@ a.back:hover{border-color:#4f8ef7}
 <div id="tip"></div>
 
 <div id="hud">
-  <div class="logo">TASTE<span>SPACE</span></div>
+  <div class="logo">MUSI<span>VERSE</span></div>
   <div id="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> fly · <kbd>Q</kbd>/<kbd>E</kbd> down/up ·
     drag to look · <kbd>Shift</kbd> boost · scroll = speed</div>
   <div id="speedbox">speed <input id="speed" type="range" min="0.15" max="5" step="0.05" value="1"><span id="speedval">1.0×</span></div>
   <div id="mkeys">👆 tap a dot to fly · swipe to look</div>
 </div>
 <div id="count"></div>
-<a class="back" href="./index.html">← back to 2D map</a>
+<a class="back" href="./taste-map">← back to 2D map</a>
 <div id="np"><i></i><div class="t"><b id="np-name"></b> <span class="a" id="np-art"></span></div></div>
 
 <div id="mapwrap">
@@ -472,7 +472,13 @@ window.crateSpace = {
   }
 };
 addEventListener('blur',()=>{Object.keys(keys).forEach(k=>delete keys[k]);dragging=false;});
-if(embedded) $('#gate').classList.add('hidden');
+if(embedded){
+  $('#gate').classList.add('hidden');
+  // Behind the chat the minimap is clutter — the chat is the way you
+  // navigate there, not a 2-D overview. It stays on the standalone page.
+  const mw=$('#mapwrap'); if(mw) mw.style.display='none';
+  const bk=document.querySelector('.back'); if(bk) bk.style.display='none';
+}
 // ── Where the flight starts ────────────────────────────────────────────────
 // Not the origin. (0,0,320) put you in the middle of everything with no sense
 // of being anywhere, whereas this corner of the cloud has 1,109 tracks within
