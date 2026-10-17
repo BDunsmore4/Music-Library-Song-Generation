@@ -185,7 +185,6 @@ body.chisel-armed #glass-pane :is(button,textarea,a){cursor:auto}
 <header>
   <h1>Muse&#8239;IC</h1>
   <span class="meta" id="meta">connecting…</span>
-  <a href="./taste-map">taste map →</a>
   <button id="hide-space-chat" aria-label="Hide chat">Hide −</button>
 </header>
 
@@ -456,6 +455,13 @@ const returnButton = document.getElementById('return-chat');
 const showChatButton=document.getElementById('show-space-chat');
 let spaceChatTimer=null,spaceIntroShown=false;
 function showSpaceChat(){
+  // Clear the damage first. The crack paths are drawn into #cracks, which
+  // lives inside the pane at z-index 5, so without this the chat panel comes
+  // back with the fractures still across it — the glass is meant to be gone,
+  // not carried into the Musiverse.
+  cracks.replaceChildren();
+  const sh=document.getElementById('shards');
+  if(sh){sh.replaceChildren();sh.hidden=true;}
   pane.classList.add('space-chat');pane.classList.remove('landing');
   pane.hidden=false;pane.inert=false;showChatButton.hidden=true;scroll();
 }
