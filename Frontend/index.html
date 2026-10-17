@@ -481,7 +481,7 @@ function equipTools(){
   revealState = 'armed'; rig.classList.add('equipped');
   document.body.classList.add('chisel-armed');strikeButton.hidden=false;placeChisel();
   statusLine.textContent = 'Three strikes. Click the pane, press Space, or tap Strike.';
-  addMessage('bot', 'The chisel is your cursor. Click or tap the pane to strike, or press Space. Three hits will break through.');
+  addMessage('bot', 'Click or tap the pane to strike, or press Space. Three hits will break through.');
   input.blur(); strikeButton.focus();
 }
 // Seeded fractures are continuous across hits; no repeating sine-wave teeth.
