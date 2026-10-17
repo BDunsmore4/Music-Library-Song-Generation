@@ -237,6 +237,98 @@ def chat_config():
     })
 
 
+@bp.route("/api/chat/diagnostics", methods=["GET"])
+def chat_diagnostics():
+    """Is this deployment actually wired up? One call, no guessing.
+
+    Exists because diagnosing "it cannot reach Apple Music" took several rounds
+    of reading boot logs that did not contain the failure. Reports what works
+    and the exact error when something does not — never key material, only
+    whether a key is present and what it failed with.
+    """
+    if not _authorised():
+        return jsonify({"error": "unauthorised"}), 401
+    out = {}
+
+    info = llm.describe()
+    out["llm"] = {"backend": info.get("backend"), "model": info.get("model"),
+                  "configured": info.get("configured"), "reason": info.get("reason")}
+
+    # Apple, step by step, so a failure says which step
+    apple = {"env_present": {}}
+    for v in ("APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY",
+              "APPLE_PRIVATE_KEY_PATH"):
+        raw = os.environ.get(v, "")
+        apple["env_present"][v] = bool(raw)
+        if v == "APPLE_PRIVATE_KEY" and raw:
+            apple["private_key_looks_like_pem"] = "BEGIN" in raw and "PRIVATE KEY" in raw
+            apple["private_key_chars"] = len(raw)
+    try:
+        import apple_token
+        apple["is_configured"] = apple_token.is_configured()
+        if apple["is_configured"]:
+            try:
+                tok = apple_token.get_developer_token()
+                apple["token_mint"] = "ok (%d chars)" % len(tok)
+                import requests
+                r = requests.get(
+                    "https://api.music.apple.com/v1/catalog/%s/search"
+                    % os.environ.get("APPLE_STOREFRONT", "gb"),
+                    headers={"Authorization": "Bearer %s" % tok}, timeout=15,
+                    params={"term": "steely dan bodhisattva", "types": "songs",
+                            "limit": 3})
+                apple["live_search_status"] = r.status_code
+                if r.status_code >= 400:
+                    apple["live_search_body"] = r.text[:300]
+                else:
+                    songs = r.json().get("results", {}).get("songs", {}).get("data", [])
+                    apple["live_search_results"] = len(songs)
+                    apple["with_preview"] = sum(
+                        1 for d in songs if (d.get("attributes", {}).get("previews") or []))
+            except Exception as e:
+                apple["token_or_search_error"] = "%s: %s" % (type(e).__name__, str(e)[:200])
+    except Exception as e:
+        apple["import_error"] = "%s: %s" % (type(e).__name__, str(e)[:160])
+    out["apple_music"] = apple
+
+    out["elevenlabs"] = {"configured": bool(os.environ.get("ELEVENLABS_API_KEY"))}
+
+    store_dir = os.environ.get("CRATE_STORE_DIR", "crate_store")
+    store = {"dir": store_dir}
+    try:
+        if not os.path.isdir(store_dir):
+            os.makedirs(store_dir)
+        probe = os.path.join(store_dir, ".write-probe")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        store["writable"] = True
+        store["persists_across_deploys"] = store_dir.startswith("/") and \
+            not store_dir.startswith("/app")
+    except Exception as e:
+        store["writable"] = False
+        store["error"] = str(e)[:160]
+    out["store"] = store
+
+    try:
+        import acquire
+        out["acquisition"] = acquire.budget()
+    except Exception as e:
+        out["acquisition"] = {"error": str(e)[:160]}
+
+    try:
+        c = _crate()
+        out["library"] = {"tracks": c.crate.n,
+                          "axes": len(c.crate.axes),
+                          "enrichment": c.crate.year is not None,
+                          "map_coords": len(_map_coords()),
+                          "map_coords_3d": len(_map_coords_3d())}
+    except Exception as e:
+        out["library"] = {"error": str(e)[:160]}
+
+    return jsonify(out)
+
+
 @bp.route("/api/chat/session", methods=["POST"])
 def chat_session():
     if not _authorised():
